@@ -26,7 +26,7 @@ $$
 \min & \frac{1}{2}\mathbf{x}^{\prime}\mathbf{Vx}+\mathbf{x}^{\prime}
 \mathbf{q}\\
 s.t. & \mathbf{Ax}=\mathbf{b}\in\mathbb{R}^{M}\\
-& \mathbf{Gx}\leq\mathbf{g}\in\mathbb{R}^{L}\\
+& \mathbf{Gx}\leq\mathbf{g}\in\mathbb{R}^{J}\\
 & \boldsymbol{d}\leq\mathbf{x}\leq\boldsymbol{u}\in\mathbb{R}^{N}
 \end{array}
 $$

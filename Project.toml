@@ -3,6 +3,10 @@ uuid = "73a7d86c-03e3-42fb-a0f5-70ef6cda08f4"
 authors = ["Pharos Abad"]
 version = "0.1.0"
 
+
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
 [compat]
 julia = "1"
 
