@@ -1,7 +1,7 @@
 "Simplex algorithm"
 module Simplex
 using LinearAlgebra
-using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP
+using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, Settings
 export SimplexLP, cDantzigLP, maxImprvLP
 
 #=
@@ -9,6 +9,7 @@ REMARK: writing the next basis as a product of the current basis times an easily
     If this method is adopt, how often should one recompute an inverse of the current basis?
 =#
 
+#=
 """
 
         Settings(; kwargs...)       The default Settings is set by Float64 type
@@ -34,8 +35,7 @@ function Settings{BigFloat}(; tol=BigFloat(2)^-76,
     rule=:Dantzig)
     Settings{BigFloat}(tol, rule)
 end
-
-
+=#
 
 
 """
@@ -460,7 +460,7 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     f = sum(x[N0+1:end])
     if abs(f) > tol
         #error("feasible region is empty")
-        return S[1:N+J], 0, x[1:N]  #0 infeasible
+        return x[1:N], S[1:N+J], 0   #0 infeasible
     end
 
     #Phase II    --- --- phase 2 --- ---
@@ -520,7 +520,7 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
             end
         end
     end
-    return S, iH, x
+    return x, S, iH
 end
 
 function SimplexLP(c::Vector{T}, A, b, G, g, d, u, N, M, J; settings=Settings{T}(), min=true) where {T}
@@ -596,7 +596,7 @@ function SimplexLP(c::Vector{T}, A, b, G, g, d, u, N, M, J; settings=Settings{T}
     end
 
     x = x[1:N]
-    return S, iH, x #, x' * c
+    return x, S, iH #, x' * c
 
 end
 

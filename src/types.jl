@@ -193,4 +193,42 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
 end
 
 
+"""
+
+        Settings(P::Problem; kwargs...)        The default Settings to given Problem
+        Settings(; kwargs...)       The default Settings is set by Float64 type
+        Settings{T<:AbstractFloat}(; kwargs...)
+
+kwargs are from the fields of Settings{T<:AbstractFloat} for Float64 and BigFloat
+
+            tol::T          #2^-26 ≈ 1.5e-8  general scalar
+            pivot::Symbol    #pivot for purging redundant rows {:column, :row}
+
+"""
+struct Settings{T<:AbstractFloat}
+    maxIter::Int    #7777
+    tol::T          #2^-26
+    tolN::T         #2^-26
+    tolG::T         #2^-27 for Greeks (beta and gamma)
+    pivot::Symbol    #column pivoting
+    rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
+end
+
+Settings(; kwargs...) = Settings{Float64}(; kwargs...)
+
+function Settings{Float64}(; maxIter=7777,
+    tol=2^-26,
+    tolN=2^-26,
+    tolG=2^-27,
+    pivot=:column, rule=:Dantzig)
+    Settings{Float64}(maxIter, tol, tolN, tolG, pivot, rule)
+end
+
+function Settings{BigFloat}(; maxIter=7777,
+    tol=BigFloat(2)^-76,
+    tolN=BigFloat(2)^-76,
+    tolG=BigFloat(2)^-77,
+    pivot=:column, rule=:Dantzig)
+    Settings{BigFloat}(maxIter, tol, tolN, tolG, pivot, rule)
+end
 

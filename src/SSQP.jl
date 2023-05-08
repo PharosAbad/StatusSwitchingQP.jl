@@ -2,41 +2,12 @@
 module SSQP
 
 using LinearAlgebra
-
-using EfficientFrontier: EfficientFrontier, Problem, Status, Event, IN, DN, UP, OE, EO
-import EfficientFrontier: SettingsLP
-
-using EfficientFrontier.Simplex: cDantzigLP, maxImprvLP, Simplex
-
-export solveQP, QP
-
+using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, QP, getRowsGJ, getRowsGJr, Settings
+export solveQP
+#using StatusSwitchingQP: Simplex
 
 
 #=
-function QP(P::Problem{T}, L::T=0.0) where {T}
-    (; E, V, u, d, G, g, A, b, N, M, J) = P
-    q = -L * E
-    return QP(V, A, G, q, b, g, d, u, N, M, J)
-end
-
-function QP(mu::T, P::Problem{T}) where {T}
-    (; E, V, u, d, G, g, A, b, N, M, J) = P
-    q = zeros(T, N)
-    M += 1
-    #Am = [E'; A]
-    #bm = [mu; b]
-    Am = [A; E']
-    bm = [b; mu]
-    return QP(V, Am, G, q, bm, g, d, u, N, M, J)
-end
-
-
-function SettingsLP(Q::QP{T}; kwargs...) where {T}
-    Simplex.Settings{T}(; kwargs...)
-end
-=#
-
-
 """
 
         Settings(Q::QP{T}; kwargs...)        The default Settings to given quadratic programming Q
@@ -75,49 +46,12 @@ function Settings{BigFloat}(; maxIter=7777,
     Settings{BigFloat}(maxIter, tol, tolN, tolG)
 end
 
+#=
 function Settings(Q::QP{T}; kwargs...) where {T}
     Settings{T}(; kwargs...)
-end
+end =#
+=#
 
-
-
-function getRows(A::Matrix{T}, tol=sqrt(eps(T))) where {T}
-    #indicate the non-redundant rows, the begaining few rows can be zeros (redundant)
-    M, N = size(A)
-    if N == 0
-        @warn "zero columns" size(A)
-        return collect(axes(A, 1))
-    end
-    R = falses(M)
-    if M == 0
-        return findall(R)
-    end
-
-    r1 = M + 1
-    #find the 1st non-zero row
-    for r in 1:M
-        v = @view A[r, :]
-        if norm(v, Inf) <= tol
-            continue
-        else
-            R[r] = true
-            r1 = r + 1
-            break
-        end
-    end
-
-    #rows after the 1st non-zero row
-    H = @view A[R, :]
-    for r in r1:M
-        #v = @view A[r:r, :]
-        v = @view A[r, :]
-        if norm(v, Inf) > tol && norm(v - H' * (H' \ v), Inf) > tol
-            R[r] = true
-            H = @view A[R, :]
-        end
-    end
-    return findall(R)
-end
 
 function freeK!(S, z, V, q, N, tol)  #for K=0
     #modify: S
@@ -300,12 +234,12 @@ Outputs
 
     z               : solution,  N x 1 vector
     S               : Vector{Status}, (N+J)x1
-    status          : > 0 if successful (=iter_count), 0 if infeasibility detected, < 0 if not converged (=-iter_count)
+    status          : > 0 if successful (=iter_count), 0 if infeasibility detected, < 0 if not converged (=-iter_count); -1 numerical error
 
 See also [`QP`](@ref), [`EfficientFrontier.Simplex.SimplexLP`](@ref), [`EfficientFrontier.SSQP.Settings`](@ref), [`EfficientFrontier.Simplex.Settings`](@ref), [`initQP`](@ref), [`initSSQP`](@ref)
 """
 function solveQP(V::Matrix{T}, q::Vector{T}, A::Matrix{T}, b::Vector{T}, G::Matrix{T}, g::Vector{T},
-    d::Vector{T}, u::Vector{T}; settings=Settings{T}(), settingsLP=Simplex.Settings{T}()) where {T}
+    d::Vector{T}, u::Vector{T}; settings=Settings{T}(), settingsLP=Settings{T}()) where {T}
 
     #N::Int32 = length(q)
     N = length(q)
@@ -317,6 +251,7 @@ end
 
 function solveQP(Q::QP{T}; settings=Settings(Q), settingsLP=SettingsLP(Q)) where {T}
     S, x0 = initSSQP(Q, settingsLP)
+    #S, x0 = initQP(Q, settingsLP)
     solveQP(Q, S, x0; settings=settings)
 end
 
@@ -324,7 +259,9 @@ end
 function solveQP(Q::QP{T}, S, x0; settings=Settings(Q)) where {T}
     (; V, A, G, q, b, g, d, u, N, M, J) = Q
     #(; maxIter, tol, tolN, tolG) = settings
-    (; maxIter, tol, tolG) = settings
+    (; maxIter, tol, tolG, pivot) = settings
+
+    refineRows = pivot == :column ? getRowsGJ : getRowsGJr
 
     fu = u .< Inf   #finite upper bound
     fd = d .> -Inf   #finite lower bound
@@ -362,7 +299,7 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings(Q)) where {T}
         AB = vcat(A[:, B], GE[:, B])
         bE = vcat(b, g[Eg]) - AB * zB
 
-        ra = getRows(AE, tol)
+        #= ra = getRows(AE, tol)
         W = length(ra)
         if W < length(bE)
             rb = getRows([AE bE], tol)
@@ -372,7 +309,19 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings(Q)) where {T}
             AE = AE[ra, :]
             bE = bE[ra]
             AB = AB[ra, :]
+        end =#
+
+        ra, la = refineRows([AE bE], tol)
+        W = length(ra)
+        if W < length(bE)
+            if W != la
+                return z, S, -1
+            end
+            AE = AE[ra, :]
+            bE = bE[ra]
+            AB = AB[ra, :]
         end
+
 
         iV = inv(cholesky(V[F, F]))
         VBF = V[B, F]
@@ -472,7 +421,7 @@ end
         S, x0 = initSSQP(Q::QP{T}, settingsLP)
 
 
-do not handle free variables such that -∞ < x < +∞. and d shoue be finite. OK for EfficientFrontier
+do not handle free variables such that -∞ < x < +∞. and d should be finite. OK for EfficientFrontier
 """
 function initSSQP(Q::QP{T}, settingsLP) where {T}
     (; A, G, b, g, d, u, N, M, J) = Q

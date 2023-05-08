@@ -7,7 +7,7 @@ ___StatusSwitchingQP.jl___
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://github.com/PharosAbad/StatusSwitchingQP.jl/wiki)
 
 <h1 align="center" margin=0px>
-  Status Switching Method for Linear Programming and Quadratic Programming
+  Status Switching Method for Quadratic Programming and Linear Programming
 </h1>
 
 <p align="center">
