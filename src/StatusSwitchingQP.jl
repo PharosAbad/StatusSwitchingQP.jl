@@ -1,3 +1,4 @@
+"Status Switching Method for Quadratic Programming and Linear Programming"
 module StatusSwitchingQP
 using LinearAlgebra
 

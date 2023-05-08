@@ -4,7 +4,7 @@ module SSQP
 using LinearAlgebra
 using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, QP, getRowsGJ, getRowsGJr, Settings
 export solveQP
-#using StatusSwitchingQP: Simplex
+using StatusSwitchingQP.Simplex: cDantzigLP, maxImprvLP #, Simplex
 
 
 #=
@@ -236,10 +236,10 @@ Outputs
     S               : Vector{Status}, (N+J)x1
     status          : > 0 if successful (=iter_count), 0 if infeasibility detected, < 0 if not converged (=-iter_count); -1 numerical error
 
-See also [`QP`](@ref), [`EfficientFrontier.Simplex.SimplexLP`](@ref), [`EfficientFrontier.SSQP.Settings`](@ref), [`EfficientFrontier.Simplex.Settings`](@ref), [`initQP`](@ref), [`initSSQP`](@ref)
+See also [`QP`](@ref), [`SimplexLP`](@ref), [`Settings`](@ref), [`initQP`](@ref), [`initSSQP`](@ref)
 """
 function solveQP(V::Matrix{T}, q::Vector{T}, A::Matrix{T}, b::Vector{T}, G::Matrix{T}, g::Vector{T},
-    d::Vector{T}, u::Vector{T}; settings=Settings{T}(), settingsLP=Settings{T}()) where {T}
+    d::Vector{T}, u::Vector{T}; settings=Settings{T}(), settingsLP=settings) where {T}
 
     #N::Int32 = length(q)
     N = length(q)
@@ -249,14 +249,17 @@ function solveQP(V::Matrix{T}, q::Vector{T}, A::Matrix{T}, b::Vector{T}, G::Matr
     solveQP(Q; settings=settings, settingsLP=settingsLP)
 end
 
-function solveQP(Q::QP{T}; settings=Settings(Q), settingsLP=SettingsLP(Q)) where {T}
-    S, x0 = initSSQP(Q, settingsLP)
-    #S, x0 = initQP(Q, settingsLP)
+function solveQP(Q::QP{T}; settings=Settings{T}(), settingsLP=settings) where {T}
+    #x0, S, status = initSSQP(Q, settingsLP)
+    x0, S, status = initQP(Q, settingsLP)
+    if status <= 0  #infeasible or numerical error
+        return x0, S, status
+    end
     solveQP(Q, S, x0; settings=settings)
 end
 
 
-function solveQP(Q::QP{T}, S, x0; settings=Settings(Q)) where {T}
+function solveQP(Q::QP{T}, S, x0; settings=Settings{T}()) where {T}
     (; V, A, G, q, b, g, d, u, N, M, J) = Q
     #(; maxIter, tol, tolN, tolG) = settings
     (; maxIter, tol, tolG, pivot) = settings
@@ -357,7 +360,7 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings(Q)) where {T}
         #z[F] = alpha
         status = KKTchk!(S, F, B, Eg, gamma, alphaL, AE, GE, idAE, ra, N, M, tolG)
         if status > 0
-            #= ik = findall(F)
+            ik = findall(F)
             for k in ik #check fake IN
                 if abs(z[k] - d[k]) < tol
                     z[k] = d[k]
@@ -366,7 +369,7 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings(Q)) where {T}
                     z[k] = u[k]
                     S[k] = UP
                 end
-            end =#
+            end
 
             #should we compute the final analytical z[I]?
             #z1 = copy(z)
@@ -418,10 +421,10 @@ end
 
 
 """
-        S, x0 = initSSQP(Q::QP{T}, settingsLP)
+        x0, S, status = initSSQP(Q::QP{T}, settingsLP)
 
 
-do not handle free variables such that -∞ < x < +∞. and d should be finite. OK for EfficientFrontier
+performing Phase-I Simplex, do not handle free variables such that -∞ < x < +∞. and d should be finite. OK for EfficientFrontier
 """
 function initSSQP(Q::QP{T}, settingsLP) where {T}
     (; A, G, b, g, d, u, N, M, J) = Q
@@ -460,22 +463,26 @@ function initSSQP(Q::QP{T}, settingsLP) where {T}
     u1 = [us; fill(Inf, Ms)]
 
     _iH, x, _invB = solveLP(c1, A1, b1, d1, u1, B, S; invB=invB, q=q, tol=tol)
-    f = sum(x[Ns+1:end])
-    if f > tol
-        error("feasible region is empty")
-    end
 
     x0 = x[1:N]
     S = S[1:N+J]
     for k in N+1:N+J
         S[k] = S[k] == IN ? OE : EO
     end
-    return S, x0
+
+    f = sum(x[Ns+1:end])
+    if f > tol
+        #error("feasible region is empty")
+        return x0, S, 0
+    end
+
+
+    return x0, S, 1
 
 end
 
 """
-        S, x0 = initQP(Q::QP{T}, settingsLP)
+        x0, S, status = initQP(Q::QP{T}, settingsLP)
 
 performing Phase-I Simplex on the polyhedron {Az=b, Gz≤g, d≤z≤u} to find an initial feasible point
 allowing free variables such that -∞ < z < +∞
@@ -537,15 +544,14 @@ function initQP(Q::QP{T}, settingsLP) where {T}
 
     #f, x, _q, _invB, _iH = EfficientFrontier.Simplex.cDantzigLP(c1, A1, b1, d1, u1, B, S; invB=invB, q=q, tol=tol)
     _iH, x0, _invB = solveLP(c1, A1, b1, d1, u1, B, S; invB=invB, q=q, tol=tol)
-    f = sum(x[N0+1:end])
-    if f > tol
-        #if abs(f) > tol
-        #display(f)
-        error("feasible region is empty")
-    end
-
     x = x0[1:N]
     S = S[1:N+J]
+    f = sum(x0[N0+1:end])
+    if f > tol
+        #error("feasible region is empty")
+        return x, S, 0   #0 infeasible
+    end
+
 
     for k in N+1:N+J    #inequalities
         S[k] = S[k] == IN ? OE : EO
@@ -566,7 +572,7 @@ function initQP(Q::QP{T}, settingsLP) where {T}
             end
         end
     end
-    return S, x
+    return x, S, 1
 end
 
 end

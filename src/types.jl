@@ -210,7 +210,7 @@ struct Settings{T<:AbstractFloat}
     tol::T          #2^-26
     tolN::T         #2^-26
     tolG::T         #2^-27 for Greeks (beta and gamma)
-    pivot::Symbol    #column pivoting
+    pivot::Symbol    #pivoting for purging redundant rows {:column, :row}
     rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
 end
 
