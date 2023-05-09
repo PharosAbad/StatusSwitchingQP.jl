@@ -9,80 +9,69 @@ REMARK: writing the next basis as a product of the current basis times an easily
     If this method is adopt, how often should one recompute an inverse of the current basis?
 =#
 
-#=
-"""
-
-        Settings(; kwargs...)       The default Settings is set by Float64 type
-        Settings{T<:AbstractFloat}(; kwargs...)
-
-kwargs are from the fields of Settings{T<:AbstractFloat} for Float64 and BigFloat
-
-            tol::T          #2^-26 ≈ 1.5e-8  general scalar
-            rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
-
-"""
-struct Settings{T<:AbstractFloat}
-    tol::T         #general scalar
-    rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
-end
-
-Settings(; kwargs...) = Settings{Float64}(; kwargs...)
-function Settings{Float64}(; tol=2^-26, rule=:Dantzig)
-    Settings{Float64}(tol, rule)
-end
-
-function Settings{BigFloat}(; tol=BigFloat(2)^-76,
-    rule=:Dantzig)
-    Settings{BigFloat}(tol, rule)
-end
-=#
 
 
 """
         cDantzigLP(c, A, b, d, u, B, S; invB, q, tol=2^-26)
 
 using  combined Dantzig's pivot rule to solve LP (combine the largest-distance rule with Dantzig's pivot rule, and switch to Bland's rule if iters > N)
-invB: inv(B)
-q:    x[B]
 
 ```math
-        min   z=c′x
+        min   f=c′x
         s.t.  Ax=b
               d≤x≤u
 ```
 the native model requires that `d` is finite
+B    : index set of basic variable, always sorted
+S    : Vector{Status}, Nx1
+invB : inverse of the basic matrix
+q    : x[B]
+
+Outputs             B and S in caller is changed
+    status          : 1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded
+    x               : solution,  N x 1 vector
+    invB            : inverse of the basic matrix
+
+
 """
 function cDantzigLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T}
-    #B is always sorted. B and S in caller is change, compute invB and q=xB each step, switch Dantzig to Bland rule when iter > N
+    #B is always sorted. B and S in caller is changed, compute invB and q=x[B] each step, switch Dantzig to Bland rule when iter > N
 
     N = length(c)
     M = length(b)
     F = trues(N)
     F[B] .= false
-    gt = zeros(T, M)
+    gt = zeros(T, M)    #step size
     ip = zeros(Int, M)    #tracking the rows of p
     Sb = fill(DN, M)    #State of leaving to be
 
-    cA = zeros(T, N)    #norm of each column of A
-    for k in 1:N
-        cA[k] = norm(A[:, k])
-    end
-    #ldr = all(cA .> tol)    #some cols maybe zero. EfficientFrontier do not have this prob
-
-    x = zeros(T, N)
-    x[S.==UP] .= u[S.==UP]
-    x[S.==DN] .= d[S.==DN]
     ud = u - d
     du = -ud
     fu = u .< Inf   #finite upper bound
 
-    Y = invB * A[:, F]
-    h = c[F] - Y' * c[B]
-    ih = S[F] .== DN
-    h[ih] .= -h[ih]
-    ih = h .> tol
-    hp = h[ih]
-    iH = findall(F)[ih]
+    cA = zeros(T, N)    #norm of each column of A
+    x = copy(d)
+    @inbounds begin
+        for k in 1:N
+            cA[k] = norm(A[:, k])
+        end
+        #ldr = all(cA .> tol)    #some cols maybe zero. EfficientFrontier do not have this prob
+
+        #x = zeros(T, N)
+        #x[S.==DN] .= d[S.==DN]
+        #x[S.==UP] .= u[S.==UP]
+        iu = findall(S .== UP)
+        x[iu] = u[iu]
+        #x[B] = q
+
+        Y = invB * A[:, F]
+        h = c[F] - Y' * c[B]
+        ih = S[F] .== DN
+        h[ih] .= -h[ih]
+        ih = h .> tol
+        hp = h[ih]
+        iH = findall(F)[ih]
+    end
     nH = length(iH)
     Bland = false
     loop = 0
@@ -119,6 +108,7 @@ function cDantzigLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
                 if fu[k]    #DN -> UP
                     l = -1
                 else    # unbounded
+                    x[B] = q
                     return 3, x, invB
                 end
             else
@@ -132,6 +122,7 @@ function cDantzigLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
                     end
                 else
                     if isinf(gl) #unbounded
+                        x[B] = q
                         return 3, x, invB
                     end
                     Sl = Sb[l]
@@ -219,18 +210,27 @@ end
         maxImprvLP(c, A, b, d, u, B, S; invB, q, tol=2^-26)
 
 using  max improvement pivot rule to solve LP (no cycle since it becomes Bland's rule if the improvement is 0)
-invB: inv(B)
-q:    x[B]
 
 ```math
-        min   z=c′x
+        min   f=c′x
         s.t.  Ax=b
               d≤x≤u
 ```
 the native model requires that `d` is finite
+B    : index set of basic variable, always sorted
+S    : Vector{Status}, Nx1
+invB : inverse of the basic matrix
+q    : x[B]
+
+Outputs             B and S in caller is changed
+    status          : 1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded
+    x               : solution,  N x 1 vector
+    invB            : inverse of the basic matrix
+
+
 """
 function maxImprvLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T}
-    #greatest improvement, B is always sorted. B and S in caller is change, compute invB and q=xB each step
+    #greatest improvement, B is always sorted. B and S in caller is change, compute invB and q=x[B] each step
     N = length(c)
     M = length(b)
     F = trues(N)
@@ -239,24 +239,32 @@ function maxImprvLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
     ip = zeros(Int, M)    #tracking the rows of p
     Sb = fill(DN, M)    #State of leaving to be
 
-    x = zeros(T, N)
-    x[S.==UP] .= u[S.==UP]
-    x[S.==DN] .= d[S.==DN]
-
-    Y = invB * A[:, F]
-    h = c[F] - Y' * c[B]
-    vS = S[F]   #State of leaving to be, for each candidate k
-    g = zeros(T, N - M)    #theta for each candidate k
-    ig = zeros(Int, N - M)    #min subscrip for theta for each candidate k
-    #vD = falses(N - M)  #DN or not, for each candidate k
     ud = u - d
     du = -ud
     fu = u .< Inf   #finite upper bound
 
-    ih = S[F] .== DN
-    h[ih] .= -h[ih]
-    ih = h .> tol
-    iH = findall(F)[ih]
+    #x = zeros(T, N)
+    #x[S.==UP] .= u[S.==UP]
+    #x[S.==DN] .= d[S.==DN]
+    x = copy(d)
+    @inbounds begin
+        iu = findall(S .== UP)
+        x[iu] = u[iu]
+        #x[B] = q
+
+        Y = invB * A[:, F]
+        h = c[F] - Y' * c[B]
+        vS = S[F]   #State of leaving to be, for each candidate k
+        g = zeros(T, N - M)    #theta for each candidate k
+        ig = zeros(Int, N - M)    #min subscrip for theta for each candidate k
+        #vD = falses(N - M)  #DN or not, for each candidate k
+
+
+        ih = S[F] .== DN
+        h[ih] .= -h[ih]
+        ih = h .> tol
+        iH = findall(F)[ih]
+    end
     nH = length(iH)
     @inbounds while nH > 0
         P = @view Y[:, ih]
@@ -289,6 +297,7 @@ function maxImprvLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
                         l = 1
                         ip[1] = -1
                     else    # unbounded
+                        x[B] = q
                         return 3, x, invB
                     end
                 else
@@ -301,6 +310,7 @@ function maxImprvLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
                         end
                     else
                         if isinf(g[n])  #unbounded
+                            x[B] = q
                             return 3, x, invB
                         end
                     end
@@ -396,11 +406,16 @@ end
 
 """
 
-        SimplexLP(P::LP{T}; settings=Settings(PS), min=true)
+        SimplexLP(P::LP{T}; settings=Settings{T}(), min=true)
 
-find the `Status` for assets by simplex method. If `min=false`, we maximize the objective function
+solve LP by simplex method. If `min=false`, we maximize the objective function
 
-See also [`Status`](@ref), [`LP`](@ref), [`StatusSwitchingQP.Simplex.Settings`](@ref), [`StatusSwitchingQP.Simplex.cDantzigLP`](@ref), [`StatusSwitchingQP.Simplex.maxImprvLP`](@ref)
+Outputs
+    x               : solution,  N x 1 vector
+    S               : Vector{Status}, (N+J)x1
+    status          : 1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded
+
+See also [`Status`](@ref), [`LP`](@ref), [`Settings`](@ref), [`cDantzigLP`](@ref), [`maxImprvLP`](@ref)
 """
 function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
 
@@ -523,6 +538,7 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     return x, S, iH
 end
 
+#=
 function SimplexLP(c::Vector{T}, A, b, G, g, d, u, N, M, J; settings=Settings{T}(), min=true) where {T}
     #free variable and (-∞, u], not handle;
     (; tol, rule) = settings
@@ -599,7 +615,7 @@ function SimplexLP(c::Vector{T}, A, b, G, g, d, u, N, M, J; settings=Settings{T}
     return x, S, iH #, x' * c
 
 end
-
+=#
 
 end
 

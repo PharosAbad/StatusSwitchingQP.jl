@@ -1,15 +1,9 @@
 "Status Switching Method for LP"
 module SSLP
 
-# ------------ 2023-04-07 19:52:11
-#考虑允许自由变量 (原始态, 无需转化成 两正变量的差)
-
 using LinearAlgebra
 using StatusSwitchingQP:  Status, IN, DN, UP, OE, EO, Event, LP, getRowsGJ, getRowsGJr, Settings
-
 export auxLP, solveLP
-
-
 
 function freeK!(S, U, D, c, N, tol)  #for K=0
     #modify: S
@@ -31,17 +25,13 @@ function freeK!(S, U, D, c, N, tol)  #for K=0
             S[ip] = S0[ip]  #restore the status
             return 2    #infinitely many solutions
         end
-        #let it handle by KKTchk, chance to improve, but some c[k]=0
+        #let it handle by KKTchk, chance to improve, maybe some c[k]=0
         return -1
     end
-
 end
 
 function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, N, J, tol) where {T}  #for K>0 (allow W = 0)
-    #function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, fu, fd, tol) where {T}  #for K>0 (allow W = 0)
     #modify: S, x
-    #N = length(c)
-    #J = length(g)
     Lo = Vector{Event{T}}(undef, 0)
     s::T = 0.0
 
@@ -103,7 +93,6 @@ end
 
 function KKTchk!(S, F, B, U, hW, AB, Eg, c::Vector{T}, AE, GE, idAE, ra, N, M, JE, tolG) where {T}
 
-    #N = length(c)
     Li = Vector{Event{T}}(undef, 0)
     ib = findall(B)
     nb = length(ib)
@@ -172,11 +161,23 @@ end
 
 """
 
-        solveLP(Q::LP{T}; settings=Settings{T}(), min=true)
+        solveLP(Q::LP{T}; settings=Settings{T}())
 
-find the `Status` for assets by simplex method. If `min=false`, we maximize the objective function
+solve the following LP defined by Q::LP
 
-See also [`Status`](@ref), [`LP`](@ref), [`StatusSwitchingQP.SSLP.Settings`](@ref)
+```math
+min   f=c′x
+s.t.  Ax=b  ∈R^{M}
+      Gx≤g  ∈R^{J}
+      d≤x≤u ∈R^{N}
+```
+
+Outputs
+    x               : solution,  N x 1 vector
+    S               : Vector{Status}, (N+J)x1
+    status          : 1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded; -1 numerical errors; -maxIter, not done
+
+See also [`Status`](@ref), [`LP`](@ref), [`Settings`](@ref)
 
 """
 function solveLP(Q::LP{T}; settings=Settings{T}()) where {T}
@@ -234,7 +235,7 @@ function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) 
         iter += 1
         if iter > maxIter
             #f = c' * x
-            status = -iter
+            status = -maxIter
             return status, x
         end
 

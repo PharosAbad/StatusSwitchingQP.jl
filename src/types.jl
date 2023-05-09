@@ -47,14 +47,26 @@ end
 
 """
         LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}) where {T}
+        LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}; G, g, d, u) where {T}
 
-The SSLP takes the following form
-min   v=c′x
+The LP takes the following form
+
+```math
+min   f=c′x
 s.t.  Ax=b  ∈R^{M}
       Gx≤g  ∈R^{J}
       d≤x≤u ∈R^{N}
+```
 
-if free, d=-Inf, u=Inf
+for free variables, d=-Inf, u=Inf.  The default LP takes the following form (G = [], g = [], d = 0, u = +∞)
+
+```math
+min   f=c′x
+s.t.  Ax=b  ∈R^{M}
+      x≥0   ∈R^{N}
+```
+
+See also [`QP`](@ref), [`Settings`](@ref), [`SimplexLP`](@ref), [`solveLP`](@ref)
 """
 struct LP{T<:AbstractFloat}    #standard LP, or structure of LP
     c::Vector{T}
@@ -70,12 +82,6 @@ struct LP{T<:AbstractFloat}    #standard LP, or structure of LP
 end
 
 
-"""
-default SSLP taks the following form
-min   v=c′x
-s.t.  Ax=b  ∈R^{M}
-      x≥0   ∈R^{N}
-"""
 function LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}; N=length(c),
     u=fill(Inf, N),
     d=zeros(N),
@@ -91,7 +97,7 @@ function LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}; N=length(c),
     N == size(u, 1) || throw(DimensionMismatch("incompatible dimension: u"))
 
     #check feasibility and redundancy of Ax=b
-    rb = rank([A b])
+    rb = rank([A vec(b)])
     @assert rb == rank(A) "infeasible: Ax=b"
     #@assert M == length(getRows(A, tolN)) "redundant rows in Ax=b"   #full row rank
     @assert M == rb "redundant rows in Ax=b"       #full row rank
@@ -114,8 +120,8 @@ end
 """
 
         QP(V::Matrix{T}; q, u, d, G, g, A, b) where T
-        QP(P::Problem{T}, L::T) where T
-        QP(mu::T, P::Problem{T}) where T
+        QP(P::QP{T}, q::Vector{T}, L::T=0.0) where T
+        QP(P::QP{T}, mu::T, q::Vector{T}) where T
 
 Setup a quadratic programming model:
 
@@ -126,9 +132,18 @@ Setup a quadratic programming model:
            d≤z≤u ∈ R^{N}
 ```
 
-some variable may be free, say -Inf < zi < +Inf. No equalities if M=0. Default values: q = 0, u = +∞, d = 0, G = [], g = [], A = ones(1,N), b = [1]
+variable z[i] may be free, say d[i]= -Inf and u[i]=+Inf . No equalities if M=0.
+Default values: q = 0, u = +∞, d = 0, G = [], g = [], A = ones(1,N), b = [1], such that
+```math
+    min   (1/2)z′Vz
+    s.t.   1'z=1  ∈ R^{M}
+           z≥0    ∈ R^{N}
+```
 
-See also [`Problem`](@ref), [`solveQP`](@ref)
+`QP(P::QP, q, L)`  :  replace the q'z term in the objective function by `-L * q`
+`QP(P::QP, mu, q)` :  add q'z=mu to the last row of Az=b, and remove q'z in the objective function
+
+See also [`LP`](@ref), [`Settings`](@ref), [`solveQP`](@ref)
 
 """
 struct QP{T<:AbstractFloat}    #standard QP, or structure of QP
@@ -159,7 +174,8 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
 
     (N, N) == size(V) || throw(DimensionMismatch("incompatible dimension: V"))
     V = convert(Matrix{T}, (V + V') / 2)   #make sure symmetric
-    @assert det(V) >= 0 "variance matrix has negative determinant"
+    #@assert det(V) >= 0 "variance matrix has negative determinant"
+    @assert eigmin(V) > -sqrt(eps(T)) "variance matrix is not positive-semidefinite"
     (M, N) == size(A) || throw(DimensionMismatch("incompatible dimension: A"))
     (J, N) == size(G) || throw(DimensionMismatch("incompatible dimension: G"))
     N == size(q, 1) || throw(DimensionMismatch("incompatible dimension: q"))
@@ -167,9 +183,13 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
     N == size(u, 1) || throw(DimensionMismatch("incompatible dimension: u"))
 
     #check feasibility and redundancy of Ax=b
-    rb = rank([A b])
+    rb = rank([A vec(b)])
     @assert rb == rank(A) "infeasible: Ax=b"
     @assert M == rb "redundant rows in Ax=b"       #full row rank
+
+    @assert !any(d .== u) "downside bound == upper bound detected"
+    #J+ (num of finite d u) > 0  , when LP is introduce
+    @assert J > 0 || any(isfinite.(d)) || any(isfinite.(u)) "no any inequalities or bounds"
 
     iu = u .< d
     if sum(iu) > 0
@@ -178,10 +198,6 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
         u[iu] .= d[iu]
         d[iu] .= t
     end
-    #to do: J+ (num of finite d u) > 0  , when LP is introduce
-
-    @assert !any(d .== u) "downside bound == upper bound detected"
-    @assert J > 0 || any(isfinite.(d)) || any(isfinite.(u)) "no any inequalities or bounds"
 
     QP{T}(V, convert(Matrix{T}, copy(A)),
         convert(Matrix{T}, copy(G)),
@@ -192,23 +208,42 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
         convert(Vector{T}, copy(u)), N, M, J)
 end
 
+function QP(P::QP{T}, q, L::T=0.0) where {T}
+    #(; V, A, G, q, b, g, d, u, N, M, J) = P
+    (; V, A, G, b, g, d, u, N, M, J) = P
+    #q = -L * q
+    #return QP(V, A, G, q, b, g, d, u, N, M, J)
+    return QP(V, A, G, -L * q, b, g, d, u, N, M, J)
+end
+
+function QP(P::QP{T}, mu::T, q::Vector{T}) where {T}
+    #(; V, A, G, q, b, g, d, u, N, M, J) = P
+    (; V, A, G, b, g, d, u, N, M, J) = P
+    #q = zeros(T, N)
+    M += 1
+    Am = [A; q']
+    bm = [b; mu]
+    return QP(V, Am, G, zeros(T, N), bm, g, d, u, N, M, J)
+end
 
 """
 
-        Settings(P::Problem; kwargs...)        The default Settings to given Problem
         Settings(; kwargs...)       The default Settings is set by Float64 type
         Settings{T<:AbstractFloat}(; kwargs...)
 
 kwargs are from the fields of Settings{T<:AbstractFloat} for Float64 and BigFloat
 
+            maxIter::Int    #7777
             tol::T          #2^-26 ≈ 1.5e-8  general scalar
-            pivot::Symbol    #pivot for purging redundant rows {:column, :row}
+            tolG::T         #2^-27 for Greeks (beta and gamma)
+            pivot::Symbol   #pivot for purging redundant rows (Gauss-Jordan elimination) {:column, :row}
+            rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
 
 """
 struct Settings{T<:AbstractFloat}
     maxIter::Int    #7777
     tol::T          #2^-26
-    tolN::T         #2^-26
+    #tolN::T         #2^-26
     tolG::T         #2^-27 for Greeks (beta and gamma)
     pivot::Symbol    #pivoting for purging redundant rows {:column, :row}
     rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
@@ -218,17 +253,19 @@ Settings(; kwargs...) = Settings{Float64}(; kwargs...)
 
 function Settings{Float64}(; maxIter=7777,
     tol=2^-26,
-    tolN=2^-26,
+    #tolN=2^-26,
     tolG=2^-27,
     pivot=:column, rule=:Dantzig)
-    Settings{Float64}(maxIter, tol, tolN, tolG, pivot, rule)
+    #Settings{Float64}(maxIter, tol, tolN, tolG, pivot, rule)
+    Settings{Float64}(maxIter, tol, tolG, pivot, rule)
 end
 
 function Settings{BigFloat}(; maxIter=7777,
     tol=BigFloat(2)^-76,
-    tolN=BigFloat(2)^-76,
+    #tolN=BigFloat(2)^-76,
     tolG=BigFloat(2)^-77,
     pivot=:column, rule=:Dantzig)
-    Settings{BigFloat}(maxIter, tol, tolN, tolG, pivot, rule)
+    #Settings{BigFloat}(maxIter, tol, tolN, tolG, pivot, rule)
+    Settings{BigFloat}(maxIter, tol, tolG, pivot, rule)
 end
 
