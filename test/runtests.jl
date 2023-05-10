@@ -18,7 +18,7 @@ using Test
 
 
 
-
+    #SSQP
     V = [1/100 1/80 1/100
         1/80 1/16 1/40
         1/100 1/40 1/25]
@@ -26,7 +26,7 @@ using Test
 
     up = [0.7; +Inf; 0.7]     #Inf means no bounded
     P = QP(QP(V; u=up), E)
-    z, Sp, iter = solveQP(Q)
+    z, Sp, iter = solveQP(P)
     @test Status[UP, IN, IN] == Sp
 
 end
