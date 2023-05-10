@@ -7,58 +7,34 @@ export solveQP
 using StatusSwitchingQP.Simplex: cDantzigLP, maxImprvLP #, Simplex
 
 
-#=
-"""
+function polishSx!(S, z, d, u, G, g, N, J, tol)
+    #for final result
+    @inbounds for k in 1:N
+        if S[k] == DN
+            z[k] = d[k]
+        elseif S[k] == UP
+            z[k] = u[k]
+        else    #IN
+            if abs(z[k] - d[k]) < tol
+                z[k] = d[k]
+                S[k] = DN
+            elseif abs(z[k] - u[k]) < tol
+                z[k] = u[k]
+                S[k] = UP
+            end
+        end
+    end
 
-        Settings(Q::QP{T}; kwargs...)        The default Settings to given quadratic programming Q
-        Settings(; kwargs...)       The default Settings is set by Float64 type
-        Settings{T<:AbstractFloat}(; kwargs...)
+    @inbounds for j in 1:J
+        S[N+j] = abs(g[j] - z' * G[j, :]) < tol ? EO : OE
+    end
 
-kwargs are from the fields of Settings{T<:AbstractFloat} for Float64 and BigFloat
-
-            maxIter::Int        #7777
-            tol::T              #2^-26 ≈ 1.5e-8   general scalar
-            tolN::T             #2^-26 ≈ 1.5e-8   for norms
-            tolG::T             #2^-33 ≈ 1.2e-10  for Greeks (beta and gamma) "portfolio weights"
-
-See also [`QP`](@ref), [`solveQP`](@ref)
-"""
-struct Settings{T<:AbstractFloat}
-    maxIter::Int    #7777
-    tol::T          #2^-26
-    tolN::T         #2^-26
-    tolG::T         #2^-33 for Greeks (beta and gamma)
 end
-
-Settings(; kwargs...) = Settings{Float64}(; kwargs...)
-
-function Settings{Float64}(; maxIter=7777,
-    tol=2^-26,
-    tolN=2^-26,
-    tolG=2^-33)
-    Settings{Float64}(maxIter, tol, tolN, tolG)
-end
-
-function Settings{BigFloat}(; maxIter=7777,
-    tol=BigFloat(2)^-76,
-    tolN=BigFloat(2)^-76,
-    tolG=BigFloat(2)^-87)
-    Settings{BigFloat}(maxIter, tol, tolN, tolG)
-end
-
-#=
-function Settings(Q::QP{T}; kwargs...) where {T}
-    Settings{T}(; kwargs...)
-end =#
-=#
 
 
 function freeK!(S, z, V, q, N, tol)  #for K=0
     #modify: S
     p = V * z + q
-    #= if norm(p, Inf) < tol
-        return 1
-    end =#
     S0 = copy(S)
 
     t = true   #hit optimal
@@ -79,10 +55,6 @@ function freeK!(S, z, V, q, N, tol)  #for K=0
         end
         return -1
     end
-    #= if !t && norm(p[S .== IN], Inf) <= tol  #all movable are optimal
-        return 1
-    end =#
-    #return t ? 1 : -1
 
 end
 
@@ -154,7 +126,7 @@ function aStep!(p, z::Vector{T}, S, F, Og, alpha, G, g, d, u, fu, fd, N, J, tol)
         end =#
         return -1
     else
-        # if step size L1 == 1.0, some z_i hit bounds
+        # if step size L1 == 1.0, maybe some z_i hit bounds, leave it for KKTchk
         z[F] = alpha
         return 1
     end
@@ -360,7 +332,7 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings{T}()) where {T}
         #z[F] = alpha
         status = KKTchk!(S, F, B, Eg, gamma, alphaL, AE, GE, idAE, ra, N, M, tolG)
         if status > 0
-            ik = findall(F)
+            #= ik = findall(F)
             for k in ik #check fake IN
                 if abs(z[k] - d[k]) < tol
                     z[k] = d[k]
@@ -369,7 +341,9 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings{T}()) where {T}
                     z[k] = u[k]
                     S[k] = UP
                 end
-            end
+            end =#
+            polishSx!(S, z, d, u, G, g, N, J, tol)
+
 
             #should we compute the final analytical z[I]?
             #z1 = copy(z)

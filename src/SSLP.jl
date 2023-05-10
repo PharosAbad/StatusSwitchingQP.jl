@@ -9,7 +9,7 @@ function freeK!(S, U, D, c, N, tol)  #for K=0
     #modify: S
     S0 = copy(S)
     t = true   #hit optimal
-    for k in 1:N
+    @inbounds for k in 1:N
         if (c[k] >= -tol && U[k]) || (c[k] <= tol && D[k])
             #if (c[k] > tol && U[k]) || (c[k] < -tol && D[k])
             S[k] = IN
@@ -36,7 +36,7 @@ function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, N, J, tol) where {T}  
     s::T = 0.0
 
     ik = findall(F)
-    for k in eachindex(p)   #p: Kx1
+    @inbounds for k in eachindex(p)   #p: Kx1
         t = p[k]
         j = ik[k]
         if t < -tol #&& fd[j]
@@ -46,7 +46,7 @@ function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, N, J, tol) where {T}  
         end
     end
 
-    if J > 0
+    @inbounds if J > 0
         zo = g[Og] - G[Og, :] * x
         po = G[Og, F] * p
         ik = findall(Og)
@@ -71,9 +71,9 @@ function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, N, J, tol) where {T}  
         return 3
     end
 
-    x[F] .+= s * p
+    @inbounds x[F] .+= s * p
 
-    for i in 1:lastindex(Lo)
+    @inbounds for i in 1:lastindex(Lo)
         Lt = Lo[i]
         if Lt.L - s > tol
             break
@@ -96,7 +96,7 @@ function KKTchk!(S, F, B, U, hW, AB, Eg, c::Vector{T}, AE, GE, idAE, ra, N, M, J
     Li = Vector{Event{T}}(undef, 0)
     ib = findall(B)
     nb = length(ib)
-    if nb > 0
+    @inbounds if nb > 0
         #if length(ib) > 0
         hB = c[B] + AB' * hW
         for k in eachindex(hB)
@@ -114,7 +114,7 @@ function KKTchk!(S, F, B, U, hW, AB, Eg, c::Vector{T}, AE, GE, idAE, ra, N, M, J
         end
     end
 
-    if JE > 0
+    @inbounds if JE > 0
         iE = zeros(Int, JE)
         iR = findall(ra .> M)
         iE[idAE[ra[iR]]] = iR
@@ -139,7 +139,7 @@ function KKTchk!(S, F, B, U, hW, AB, Eg, c::Vector{T}, AE, GE, idAE, ra, N, M, J
     end
 
     nL = length(Li)
-    if nL > 0
+    @inbounds if nL > 0
         #sort!(Li, by=x -> x.L, rev=true)
         sort!(Li, by=x -> x.L)  #argmin
         Lt = Li[1]
@@ -162,8 +162,10 @@ end
 """
 
         solveLP(Q::LP{T}; settings=Settings{T}())
+        solveLP(Q::LP{T}, S, x0; settings)
+        solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings)
 
-solve the following LP defined by Q::LP
+solve the following LP defined by Q::LP. `solveLP(Q, S, x0)` when initial `S` and `x0` is given
 
 ```math
 min   f=c′x
@@ -176,6 +178,8 @@ Outputs
     x               : solution,  N x 1 vector
     S               : Vector{Status}, (N+J)x1
     status          : 1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded; -1 numerical errors; -maxIter, not done
+
+solveLP(c, A, b, G, g, d, u, S, x0; settings) modifies `S`, only return `status, x`
 
 See also [`Status`](@ref), [`LP`](@ref), [`Settings`](@ref)
 
@@ -219,6 +223,7 @@ function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) 
 
     N = length(c)
     refineRows = pivot == :column ? getRowsGJ : getRowsGJr
+    Nr = min(3*N, div(maxIter*2, 3))
 
     #fu = u .< Inf   #finite upper bound
     #fd = d .> -Inf   #finite lower bound
@@ -230,13 +235,17 @@ function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) 
     #s::T = 1.0  #stepsize
     iter = 0
     iCal = 0
-    #@inbounds     while true
-    while true
+    @inbounds while true
+    #while true
         iter += 1
         if iter > maxIter
             #f = c' * x
             status = -maxIter
             return status, x
+        end
+
+        if iter == Nr
+            refineRows = getRowsGJr
         end
 
         F = (Sx .== IN) #free variable are always IN
@@ -259,6 +268,7 @@ function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) 
             status = freeK!(S, U, D, c, N, tol)
             if status >= 0
                 #f = c' * x
+                #display(iter)
                 return status, x
             else
                 continue
@@ -350,6 +360,7 @@ function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) 
             #display(("--- ", iter, norm(A*x-b, Inf)))
             if status >= 0
                 #f = c' * x
+                #display(iter)
                 return status, x
             else
                 continue
@@ -367,6 +378,7 @@ function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) 
             if W < K
                 status = 2  #infinitely many solutions
             end
+            #display(iter)
             return status, x
         end
 

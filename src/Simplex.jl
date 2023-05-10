@@ -538,7 +538,7 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     return x, S, iH
 end
 
-#=
+
 function SimplexLP(c::Vector{T}, A, b, G, g, d, u, N, M, J; settings=Settings{T}(), min=true) where {T}
     #free variable and (-∞, u], not handle;
     (; tol, rule) = settings
@@ -615,7 +615,7 @@ function SimplexLP(c::Vector{T}, A, b, G, g, d, u, N, M, J; settings=Settings{T}
     return x, S, iH #, x' * c
 
 end
-=#
+
 
 end
 

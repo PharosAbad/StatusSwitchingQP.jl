@@ -1,7 +1,7 @@
 name = "StatusSwitchingQP"
 uuid = "73a7d86c-03e3-42fb-a0f5-70ef6cda08f4"
 authors = ["Pharos Abad"]
-version = "0.1.0"
+version = "0.1.1"
 
 
 [deps]

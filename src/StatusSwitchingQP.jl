@@ -10,8 +10,6 @@ export LP, QP, Settings
 include("./utils.jl")
 export getRowsGJ, getRowsGJr
 
-
-
 include("./Simplex.jl")
 using .Simplex
 export SimplexLP
