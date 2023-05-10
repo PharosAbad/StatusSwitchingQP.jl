@@ -206,7 +206,7 @@ Outputs
 
     z               : solution,  N x 1 vector
     S               : Vector{Status}, (N+J)x1
-    status          : > 0 if successful (=iter_count), 0 if infeasibility detected, < 0 if not converged (=-iter_count); -1 numerical error
+    status          : > 0 if successful (=iter_count); = 0 if infeasibility detected; < 0 fail (=-1 if numerical error, =-maxIter if not converged)
 
 See also [`QP`](@ref), [`SimplexLP`](@ref), [`Settings`](@ref), [`initQP`](@ref), [`initSSQP`](@ref)
 """

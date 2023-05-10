@@ -33,10 +33,10 @@ export solveQP
     V = [1/100 1/80 1/100
         1/80 1/16 1/40
         1/100 1/40 1/25]
-    E = [109 / 100; 23 / 20; 119 / 100]
+    #E = [109 / 100; 23 / 20; 119 / 100]
 
     up = [0.7; +Inf; 0.7]     #Inf means no bounded
-    P0 = QP(V; u=up)
+    #P0 = QP(V; u=up)
     #P = QP(QP(V; u=up), E)
 
 
@@ -52,7 +52,8 @@ export solveQP
     @compile_workload begin
         # all calls in this block will be precompiled, regardless of whether
         # they belong to your package or not (on Julia 1.8 and higher)
-        P = QP(P0, E, 0.0)
+        #P = QP(P0, E, 0.0)
+        P = QP(V; u=up)
         z, S, iter = solveQP(P)
 
         Q = LP(c, A, b; d=d, u=u, G=G, g=g)

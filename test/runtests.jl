@@ -22,10 +22,11 @@ using Test
     V = [1/100 1/80 1/100
         1/80 1/16 1/40
         1/100 1/40 1/25]
-    E = [109 / 100; 23 / 20; 119 / 100]
+    #E = [109 / 100; 23 / 20; 119 / 100]
 
     up = [0.7; +Inf; 0.7]     #Inf means no bounded
-    P = QP(QP(V; u=up), E)  #L=0
+    #P = QP(QP(V; u=up), E)  #L=0
+    P = QP(V; u=up)  #L=0
     z, Sp, iter = solveQP(P)
     @test Status[UP, IN, IN] == Sp
 
