@@ -7,7 +7,7 @@ export solveQP
 using StatusSwitchingQP.Simplex: cDantzigLP, maxImprvLP #, Simplex
 
 
-function polishSx!(S, z, d, u, G, g, N, J, tol)
+function polishSz!(S, z, d, u, G, g, N, J, tol)
     #for final result
     @inbounds for k in 1:N
         if S[k] == DN
@@ -317,7 +317,7 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings{T}()) where {T}
             if status < 0
                 continue
             end
-        #else
+            #else
             #z[F] = alpha
         end
 
@@ -342,7 +342,7 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings{T}()) where {T}
                     S[k] = UP
                 end
             end =#
-            polishSx!(S, z, d, u, G, g, N, J, tol)
+            polishSz!(S, z, d, u, G, g, N, J, tol)
 
 
             #should we compute the final analytical z[I]?
@@ -396,7 +396,6 @@ end
 
 """
         x0, S, status = initSSQP(Q::QP{T}, settingsLP)
-
 
 performing Phase-I Simplex, do not handle free variables such that -∞ < x < +∞. and d should be finite. OK for EfficientFrontier
 """

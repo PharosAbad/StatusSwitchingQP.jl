@@ -8,7 +8,7 @@ function getRowsGJ(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}
     nc1 = nc - 1
     l1 = 0  #without the last col
     i = j = 1
-    while i <= nr && j <= nc
+    @inbounds while i <= nr && j <= nc
         (m, mi) = findmax(abs.(A[r0[i:nr], j]))
         mi = mi + i - 1
         if m <= tol
@@ -52,7 +52,7 @@ function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row po
     #nc1 = nc - 1
     l1 = 0  #without the last col
     i = j = 1
-    while i <= nr && j <= nc
+    @inbounds while i <= nr && j <= nc
         (m, mj) = findmax(abs.(A[i, c0[j:nc]]))
         mj = mj + j - 1
         if m <= tol
@@ -97,7 +97,7 @@ function getRows(A::Matrix{T}, tol=sqrt(eps(T))) where {T}
 
     r1 = M + 1
     #find the 1st non-zero row
-    for r in 1:M
+    @inbounds for r in 1:M
         v = @view A[r, :]
         if norm(v, Inf) <= tol
             continue
@@ -110,7 +110,7 @@ function getRows(A::Matrix{T}, tol=sqrt(eps(T))) where {T}
 
     #rows after the 1st non-zero row
     H = @view A[R, :]
-    for r in r1:M
+    @inbounds for r in r1:M
         #v = @view A[r:r, :]
         v = @view A[r, :]
         if norm(v, Inf) > tol && norm(v - H' * (H' \ v), Inf) > tol
