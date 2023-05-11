@@ -2,10 +2,11 @@
 module SSLP
 
 using LinearAlgebra
-using StatusSwitchingQP:  Status, IN, DN, UP, OE, EO, Event, LP, getRowsGJ, getRowsGJr, Settings
+using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, QP, getRowsGJ, getRowsGJr, Settings
+#using StatusSwitchingQP.SSQP: solveQP
 export auxLP, solveLP
 
-function freeK!(S, U, D, c, N, tol)  #for K=0
+@inline function freeK!(S, U, D, c, N, tol)  #for K=0
     #modify: S
     S0 = copy(S)
     t = true   #hit optimal
@@ -30,7 +31,7 @@ function freeK!(S, U, D, c, N, tol)  #for K=0
     end
 end
 
-function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, N, J, tol) where {T}  #for K>0 (allow W = 0)
+@inline function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, N, J, tol) where {T}  #for K>0 (allow W = 0)
     #modify: S, x
     Lo = Vector{Event{T}}(undef, 0)
     s::T = 0.0
@@ -91,7 +92,7 @@ function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, N, J, tol) where {T}  
     return -1
 end
 
-function KKTchk!(S, F, B, U, hW, AB, Eg, c::Vector{T}, AE, GE, idAE, ra, N, M, JE, tolG) where {T}
+@inline function KKTchk!(S, F, B, U, hW, AB, Eg, c::Vector{T}, AE, GE, idAE, ra, N, M, JE, tolG) where {T}
 
     Li = Vector{Event{T}}(undef, 0)
     ib = findall(B)
@@ -222,21 +223,30 @@ function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) 
     end
 
     N = length(c)
+
+    #= if N > 517
+        v = abs.(c) .+ 0.5
+        P = QP(diagm(v), A, G, zeros(T, length(c)), b, g, d, u, N, M, J)
+        x, S, iter = solveQP(P, S, x0; settings=Settings(; maxIter=3))
+    else
+        x = copy(x0)
+    end =#
+    x = copy(x0)
     refineRows = pivot == :column ? getRowsGJ : getRowsGJr
-    Nr = min(3*N, div(maxIter*2, 3))
+    Nr = min(3 * N, div(maxIter * 2, 3))
 
     #fu = u .< Inf   #finite upper bound
     #fd = d .> -Inf   #finite lower bound
 
     Sx = @view S[1:N]
     Se = @view S[N+1:N+J]
-    x = copy(x0)
+
 
     #s::T = 1.0  #stepsize
     iter = 0
     iCal = 0
     @inbounds while true
-    #while true
+        #while true
         iter += 1
         if iter > maxIter
             #f = c' * x
@@ -589,7 +599,7 @@ function auxLP(Q::LP{T}, settings) where {T}
     c0[N+J+1:end] .= 1.0
     G0 = zeros(T, 0, N0)
     g0 = zeros(T, 0)
-    status, x0  = solveLP(c0, A0, b0, G0, g0, d0, u0, S, x; settings=settings)
+    status, x0 = solveLP(c0, A0, b0, G0, g0, d0, u0, S, x; settings=settings)
 
     x = x0[1:N]
     S = S[1:N+J]

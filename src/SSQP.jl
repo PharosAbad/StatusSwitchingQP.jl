@@ -7,7 +7,7 @@ export solveQP
 using StatusSwitchingQP.Simplex: cDantzigLP, maxImprvLP #, Simplex
 
 
-function polishSz!(S, z, d, u, G, g, N, J, tol)
+@inline function polishSz!(S, z, d, u, G, g, N, J, tol)
     #for final result
     @inbounds for k in 1:N
         if S[k] == DN
@@ -32,7 +32,7 @@ function polishSz!(S, z, d, u, G, g, N, J, tol)
 end
 
 
-function freeK!(S, z, V, q, N, tol)  #for K=0
+@inline function freeK!(S, z, V, q, N, tol)  #for K=0
     #modify: S
     p = V * z + q
     S0 = copy(S)
@@ -58,7 +58,7 @@ function freeK!(S, z, V, q, N, tol)  #for K=0
 
 end
 
-function aStep!(p, z::Vector{T}, S, F, Og, alpha, G, g, d, u, fu, fd, N, J, tol) where {T}
+@inline function aStep!(p, z::Vector{T}, S, F, Og, alpha, G, g, d, u, fu, fd, N, J, tol) where {T}
     #compute step
     Lo = Vector{Event{T}}(undef, 0)
     ik = findall(F)
@@ -133,7 +133,7 @@ function aStep!(p, z::Vector{T}, S, F, Og, alpha, G, g, d, u, fu, fd, N, J, tol)
 
 end
 
-function KKTchk!(S, F, B, Eg, gamma, alphaL, AE, GE, idAE, ra, N, M, tolG::T) where {T}
+@inline function KKTchk!(S, F, B, Eg, gamma, alphaL, AE, GE, idAE, ra, N, M, tolG::T) where {T}
     ib = findall(B)
     Li = Vector{Event{T}}(undef, 0)
     @inbounds for k in eachindex(gamma)

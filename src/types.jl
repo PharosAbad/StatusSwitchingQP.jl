@@ -226,6 +226,13 @@ function QP(P::QP{T}, mu::T, q::Vector{T}) where {T}
     return QP(V, Am, G, zeros(T, N), bm, g, d, u, N, M, J)
 end
 
+function QP(P::LP{T}) where {T}
+
+    (; c, A, b, G, g, d, u, N, M, J) = P
+    v = abs.(c) .+ 0.5
+    return QP(diagm(v), A, G, zeros(T, length(c)), b, g, d, u, N, M, J)
+end
+
 """
 
         Settings(; kwargs...)       The default Settings is set by Float64 type

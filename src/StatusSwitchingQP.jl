@@ -16,14 +16,14 @@ include("./Simplex.jl")
 using .Simplex
 export SimplexLP
 
+include("./SSQP.jl")
+using .SSQP
+export solveQP
+
 include("./SSLP.jl")
 using .SSLP
 export solveLP
 
-
-include("./SSQP.jl")
-using .SSQP
-export solveQP
 
 
 # #=
