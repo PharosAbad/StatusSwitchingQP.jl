@@ -261,7 +261,7 @@ Settings(; kwargs...) = Settings{Float64}(; kwargs...)
 function Settings{Float64}(; maxIter=7777,
     tol=2^-26,
     #tolN=2^-26,
-    tolG=2^-27,
+    tolG=2^-33,
     pivot=:column, rule=:Dantzig)
     #Settings{Float64}(maxIter, tol, tolN, tolG, pivot, rule)
     Settings{Float64}(maxIter, tol, tolG, pivot, rule)
@@ -270,7 +270,7 @@ end
 function Settings{BigFloat}(; maxIter=7777,
     tol=BigFloat(2)^-76,
     #tolN=BigFloat(2)^-76,
-    tolG=BigFloat(2)^-77,
+    tolG=BigFloat(2)^-87,
     pivot=:column, rule=:Dantzig)
     #Settings{BigFloat}(maxIter, tol, tolN, tolG, pivot, rule)
     Settings{BigFloat}(maxIter, tol, tolG, pivot, rule)

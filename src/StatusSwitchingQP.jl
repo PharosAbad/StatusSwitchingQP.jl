@@ -41,8 +41,8 @@ export solveLP
 
 
     c = [-3.0, -2]
-    d = [0.0, 0]
-    u = [Inf, Inf]
+    #d = [0.0, 0]
+    #u = [Inf, Inf]
     G = [-1.0 3; 1 -5]
     g = [12.0; 5]
     A = zeros(0, 2)
@@ -56,8 +56,9 @@ export solveLP
         P = QP(V; u=up)
         z, S, iter = solveQP(P)
 
-        Q = LP(c, A, b; d=d, u=u, G=G, g=g)
-        sol = solveLP(Q)
+        Q = LP(c, A, b; G=G, g=g)
+        #Q = LP(c, A, b; d=d, u=u, G=G, g=g)
+        #sol = solveLP(Q)
         res = SimplexLP(Q)
     end
 end

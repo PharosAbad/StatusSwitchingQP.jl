@@ -234,9 +234,11 @@ end
 function solveQP(Q::QP{T}, S, x0; settings=Settings{T}()) where {T}
     (; V, A, G, q, b, g, d, u, N, M, J) = Q
     #(; maxIter, tol, tolN, tolG) = settings
-    (; maxIter, tol, tolG, pivot) = settings
+    #(; maxIter, tol, tolG, pivot) = settings
+    (; maxIter, tol, tolG) = settings
 
-    refineRows = pivot == :column ? getRowsGJ : getRowsGJr
+    #refineRows = pivot == :column ? getRowsGJ : getRowsGJr
+    #refineRows = getRowsGJr
 
     fu = u .< Inf   #finite upper bound
     fd = d .> -Inf   #finite lower bound
@@ -286,7 +288,8 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings{T}()) where {T}
             AB = AB[ra, :]
         end =#
 
-        ra, la = refineRows([AE bE], tol)
+        #ra, la = refineRows([AE bE], tol)
+        ra, la = getRowsGJr([AE bE], tol)
         W = length(ra)
         if W < length(bE)
             if W != la
