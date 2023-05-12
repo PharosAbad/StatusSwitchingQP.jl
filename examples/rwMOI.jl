@@ -95,7 +95,6 @@ end
 
 function MOI2LP(P::MOIU.Model{T}, tol=2^-26) where {T}
 
-    #T = Float64
     #N = P.constraints.num_variables   #for MOI object only
     N = MOI.get(P, MOI.NumberOfVariables())
     f = MOI.get(P, MOI.ObjectiveFunction{MOI.ScalarAffineFunction{T}}())
@@ -106,83 +105,6 @@ function MOI2LP(P::MOIU.Model{T}, tol=2^-26) where {T}
 
     A, b, G, g, d, u, M, J = getConstraints(P, N, tol)
 
-    #=
-    Ab = Vector{Vector{T}}(undef, 0)
-    Gg = Vector{Vector{T}}(undef, 0)  #<=
-    d = fill(-Inf, N)
-    u = fill(Inf, N)
-    for (F, S) in MOI.get(P, MOI.ListOfConstraintTypesPresent())
-        for cref in MOI.get(P, MOI.ListOfConstraintIndices{F,S}())
-            f = MOI.get(P, MOI.ConstraintFunction(), cref)
-            s = MOI.get(P, MOI.ConstraintSet(), cref)
-            if F <: MOI.ScalarAffineFunction
-                t = zeros(T, N + 1)
-                nt = 0
-                for term in f.terms
-                    t[term.variable.value] = term.coefficient
-                    nt += 1
-                end
-                if nt == 0
-                    row_name = MOI.get(P, MOI.ConstraintName(), cref)
-                    @warn "skipping redundant rows: " * row_name
-                    continue
-                end
-                if S <: MOI.EqualTo
-                    t[end] = s.value
-                    push!(Ab, t)
-                elseif S <: MOI.GreaterThan
-                    t[end] = s.lower
-                    push!(Gg, -t)
-                elseif S <: MOI.LessThan
-                    t[end] = s.upper
-                    push!(Gg, t)
-                elseif S <: MOI.Interval
-                    row_name = MOI.get(P, MOI.ConstraintName(), cref)
-                    @warn "repacking AffineFunction range rows: " * row_name s.lower s.upper
-                    if abs(s.lower - s.upper) < tol   # an Equality
-                        t[end] = (s.lower + s.upper) / 2
-                        push!(Ab, t)
-                    else    #dispact to Gg
-                        t[end] = s.lower
-                        push!(Gg, -t)
-                        t[end] = s.upper
-                        push!(Gg, t)
-                    end
-                end
-            elseif F <: MOI.VariableIndex
-                if S <: MOI.EqualTo
-                    d[f.value] = s.value
-                    u[f.value] = s.value
-                    #display((F,S))
-                elseif S <: MOI.GreaterThan
-                    d[f.value] = s.lower
-                elseif S <: MOI.LessThan
-                    u[f.value] = s.upper
-                elseif S <: MOI.Interval
-                    d[f.value] = s.lower
-                    u[f.value] = s.upper
-                end
-            end
-        end
-    end
-    M = lastindex(Ab)
-    J = lastindex(Gg)
-    A = Matrix{T}(undef, M, N)
-    b = Vector{T}(undef, M)
-    G = Matrix{T}(undef, J, N)
-    g = Vector{T}(undef, J)
-
-    #display(("sizes ", N, M, J))
-
-    for k in 1:M
-        A[k, :] = Ab[k][1:end-1]
-        b[k] = Ab[k][end]
-    end
-    for k in 1:J
-        G[k, :] = Gg[k][1:end-1]
-        g[k] = Gg[k][end]
-    end
-    =#
     #return c, A, b, G, g, d, u
     return LP(c, A, b, G, g, d, u, N, M, J)
 end
@@ -191,7 +113,6 @@ end
 function LP2MOI(P::LP{T}) where {T}
     (; c, A, b, G, g, d, u, N, M, J) = P
 
-    #H = MOI.Utilities.Model{T}()
     H = MOIU.Model{T}()
     x = MOI.add_variables(H, N)
 
@@ -213,7 +134,6 @@ function LP2MOI(P::LP{T}) where {T}
 
     #print(H)
     return H
-
 end
 
 
@@ -223,11 +143,9 @@ function MOI2QP(P::MOIU.Model{T}, tol=2^-26) where {T}
     f = MOI.get(P, MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction{T}}())
     #display(f)
 
-
+    # f = (1/2)z′Vz+q′z     the 0.5 factor in front of the Q matrix is a common source of bugs
     V = zeros(T, N, N)
     for term in f.quadratic_terms
-        #display((term.coefficient, term.variable_1.value, term.variable_2.value))
-        #display( fieldnames(MOI.VariableIndex) )
         V[term.variable_1.value, term.variable_2.value] = term.coefficient
     end
     for i in 2:N
@@ -239,25 +157,10 @@ function MOI2QP(P::MOIU.Model{T}, tol=2^-26) where {T}
 
     q = zeros(T, N)
     for term in f.affine_terms
-        q[term.variable.value] = 2 * term.coefficient
+        #q[term.variable.value] = 2 * term.coefficient
+        q[term.variable.value] = term.coefficient
     end
     #display(q)
-
-    #=
-    ScalarQuadraticFunction{T}
-    quadratic_terms::Vector{ScalarQuadraticTerm{T}},
-    affine_terms::Vector{ScalarAffineTerm{T}},
-    constant::T,
-
-    ScalarQuadraticTerm{T}(
-    coefficient::T,
-    variable_1::VariableIndex,
-    variable_2::VariableIndex,
-
-    ScalarAffineTerm{T}(coefficient::T, variable::VariableIndex)
-    =#
-
-    #return nothing
 
     A, b, G, g, d, u, M, J = getConstraints(P, N, tol)
 
@@ -265,12 +168,9 @@ function MOI2QP(P::MOIU.Model{T}, tol=2^-26) where {T}
 end
 
 
-
-
 function QP2MOI(P::QP{T}) where {T}
     (; V, A, G, q, b, g, d, u, N, M, J) = P
 
-    #H = MOI.Utilities.Model{T}()
     H = MOIU.Model{T}()
     x = MOI.add_variables(H, N)
 
@@ -279,15 +179,11 @@ function QP2MOI(P::QP{T}) where {T}
     qt = Vector{MOI.ScalarQuadraticTerm{T}}(undef, 0)
     for i in 1:N
         for j in i:N    #upper triangle
-            #= t = V[i, j]
-            if i == j
-                t *= 2      #(1/2)z′Vz+q′z ==> z′Vz+2q′z
-            end
-            push!(qt, MOI.ScalarQuadraticTerm(t, x[i], x[j])) =#
             push!(qt, MOI.ScalarQuadraticTerm(V[i, j], x[i], x[j]))
         end
     end
-    at = MOI.ScalarAffineTerm.(q / 2, x)
+    #at = MOI.ScalarAffineTerm.(q / 2, x)
+    at = MOI.ScalarAffineTerm.(q, x)
     f = MOI.ScalarQuadraticFunction(qt, at, 0.0)
     MOI.set(H, MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction{T}}(), f)
     #display(f)

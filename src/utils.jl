@@ -43,7 +43,8 @@
 
 end
 
-@inline function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row poviting
+#@inline function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row poviting
+function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row poviting
     #Gauss-Jordan elimination, code form rref_with_pivots!
     A = copy(X)
     nr, nc = size(A)
