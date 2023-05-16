@@ -24,7 +24,7 @@ include("./SSLP.jl")
 using .SSLP
 export solveLP
 
-
+include("./MOIwrapper.jl")
 
 # #=
 @setup_workload begin
@@ -60,6 +60,10 @@ export solveLP
         #Q = LP(c, A, b; d=d, u=u, G=G, g=g)
         #sol = solveLP(Q)
         res = SimplexLP(Q)
+
+        H = StatusSwitchingQP.QP2MOI(P)
+        PO = StatusSwitchingQP.Optimizer()
+        P1 = StatusSwitchingQP.MOI2QP(PO, H)
     end
 end
 # =#

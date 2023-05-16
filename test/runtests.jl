@@ -30,4 +30,11 @@ using Test
     z, Sp, iter = solveQP(P)
     @test Status[UP, IN, IN] == Sp
 
+
+    H = StatusSwitchingQP.QP2MOI(P)
+    PO = StatusSwitchingQP.Optimizer()
+    P1 = StatusSwitchingQP.MOI2QP(PO, H)
+
+    @test P1.N == P.N
+
 end
