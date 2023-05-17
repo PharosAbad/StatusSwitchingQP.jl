@@ -119,7 +119,8 @@ end
 function MOI.supports_constraint(
     ::Optimizer,
     ::Type{MOI.VariableIndex},
-    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
+    #::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
+    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.Interval{T}}}) where {T}
     return true
 end
 
@@ -217,6 +218,10 @@ function MOI.get(opt::Optimizer, a::MOI.VariablePrimal, vi::MOI.VariableIndex)
     MOI.check_result_index_bounds(opt, a)
     return opt.Results[1][vi.value]
 end
+function MOI.get(opt::Optimizer, a::MOI.VariablePrimal)
+    MOI.check_result_index_bounds(opt, a)
+    return opt.Results[1]
+end
 
 MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = false
 
@@ -270,11 +275,12 @@ function getConstraints(P, N, tol, T)
                     throw(MOI.UnsupportedConstraint{F,S}())
                 end
             elseif F <: MOI.VariableIndex
-                if S <: MOI.EqualTo
+                #= if S <: MOI.EqualTo
                     d[f.value] = s.value
                     u[f.value] = s.value
                     #display((F,S))
-                elseif S <: MOI.GreaterThan
+                else =#
+                    if S <: MOI.GreaterThan
                     d[f.value] = s.lower
                 elseif S <: MOI.LessThan
                     u[f.value] = s.upper
