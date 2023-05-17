@@ -49,8 +49,7 @@ const _EXPLICIT_METHOD_FAILURES = [
     "test_solve_result_index",
     "test_variable_solve_with_lowerbound",
     "test_variable_solve_with_upperbound",
-]
-=#
+] =#
 
 const _EXPLICIT_METHOD_FAILURES = [
     #"test_attribute_RawStatusString",

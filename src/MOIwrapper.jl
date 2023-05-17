@@ -58,7 +58,7 @@ MOI.get(opt::Optimizer, ::MOI.SolverName) = "StatusSwitchingQP"
 MOI.get(opt::Optimizer, ::MOI.SolverVersion) = TOML.parsefile(joinpath(pkgdir(StatusSwitchingQP), "Project.toml"))["version"]
 MOI.get(opt::Optimizer, ::MOI.RawSolver) = StatusSwitchingQP.solveQP
 MOI.get(opt::Optimizer, ::MOI.ResultCount) = Int(!isnothing(opt.Results))
-MOI.get(opt::Optimizer, ::MOI.SolveTimeSec)      = 0.1
+MOI.get(opt::Optimizer, ::MOI.SolveTimeSec) = 0.1
 
 
 MOI.supports(::Optimizer, ::MOI.Silent) = true
@@ -353,7 +353,7 @@ function getConstraints(P, N, T)
 end
 
 function MOI2LP(dest::Optimizer{T}, MP) where {T}
-#function MOI2LP(P::MOIU.Model{T}) where {T}
+    #function MOI2LP(P::MOIU.Model{T}) where {T}
     #function MOI2LP(P::MOIU.Model{T}, tol=2^-26) where {T}
 
     P = MOIU.Model{T}()
