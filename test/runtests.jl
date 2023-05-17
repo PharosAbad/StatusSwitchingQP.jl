@@ -18,7 +18,6 @@ using Test
     @test status == 3   #infinitely many solutions
 
 
-
     #SSQP
     V = [1/100 1/80 1/100
         1/80 1/16 1/40

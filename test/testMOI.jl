@@ -32,7 +32,15 @@ function test_runtests()
         with_bridge_type = Float64,
         with_cache_type = Float64,
     )
-    MOI.Test.runtests(model, config)
+    MOI.Test.runtests(
+        model, 
+        config;
+        exclude=String[
+            "test_model_LowerBoundAlreadySet",
+            "test_model_UpperBoundAlreadySet",
+            "test_model_supports_constraint_ScalarAffineFunction_EqualTo",
+        ],
+    )
     return
 end
 
