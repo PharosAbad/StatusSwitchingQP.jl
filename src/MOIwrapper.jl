@@ -105,6 +105,7 @@ end
 #MOI.supports(::Optimizer, ::Type{MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction}}) = true
 
 MOI.supports(::Optimizer{T}, ::MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction{T}}) where {T} = true
+MOI.supports(::Optimizer{T}, ::MOI.ObjectiveFunction{MOI.ScalarAffineFunction{T}}) where {T} = true
 
 #=
 function MOI.supports_constraint(::Optimizer{T},
@@ -160,9 +161,12 @@ VariablePrimal
 function MOI.copy_to(dest::Optimizer{T}, src::MOI.ModelLike) where {T}
 
     idxmap = MOIU.IndexMap(dest, src)
+    dest.Sense = MOI.get(src, MOI.ObjectiveSense())
     dest.Problem = MOI2QP(dest, src)
     if norm(dest.Problem.V, Inf) == 0   #LP
-        dest.Problem = MOI2LP(dest, src)
+        #dest.Problem = MOI2LP(dest, src)
+        Q = dest.Problem
+        dest.Problem = LP(Q.q, Q.A, Q.b, Q.G, Q.g, Q.d, Q.u, Q.N, Q.M, Q.J)
     end
     return idxmap
 end
@@ -197,11 +201,10 @@ function MOI.optimize!(opt::Optimizer{T}) where {T}
     if typeof(opt.Problem) <: QP
         opt.Results = solveQP(opt.Problem; settings=opt.Settings)
     else
-
-
-        min = opt.Sense == MOI.MAX_SENSE ? false : true
-        opt.Results = SimplexLP(opt.Problem; settings=opt.Settings, min=min)    # open-intervals, supports `[l, Inf)`, `(-Inf, u]`,  and `(-Inf, Inf)`
+        #min = opt.Sense == MOI.MAX_SENSE ? false : true
+        #opt.Results = SimplexLP(opt.Problem; settings=opt.Settings, min=min)    # open-intervals, supports `[l, Inf)`, `(-Inf, u]`,  and `(-Inf, Inf)`
         #opt.Results = solveLP(opt.Problem; settings=opt.Settings)
+        opt.Results = SimplexLP(opt.Problem; settings=opt.Settings)
     end
 
     nothing
