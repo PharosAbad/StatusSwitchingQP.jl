@@ -1,17 +1,18 @@
 name = "StatusSwitchingQP"
 uuid = "73a7d86c-03e3-42fb-a0f5-70ef6cda08f4"
 authors = ["Pharos Abad"]
-version = "0.2.0"
+version = "0.2.1"
 
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+#Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-PrecompileTools = "1"
 MathOptInterface = "1.15.1"
+PrecompileTools = "1"
 julia = "1"
 
 [extras]

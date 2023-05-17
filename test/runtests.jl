@@ -1,6 +1,7 @@
 using StatusSwitchingQP
 using Test
 
+# #=
 @testset "StatusSwitchingQP.jl" begin
 
     #SSLP, unbounded
@@ -37,4 +38,9 @@ using Test
 
     @test P1.N == P.N
 
+end
+# =#
+
+@testset "MOI" begin
+    include("testMOI.jl")
 end

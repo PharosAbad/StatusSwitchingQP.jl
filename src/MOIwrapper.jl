@@ -9,13 +9,15 @@ mutable struct Optimizer{T} <: MOI.AbstractOptimizer
     Settings::StatusSwitchingQP.Settings{T}
     Results::Union{Nothing,Tuple{Vector{T},Vector{Status},Int}}
     Sense::MOI.OptimizationSense
+    Silent::Bool
 
     function Optimizer{T}(; user_settings...) where {T}
         Problem = nothing
         Settings = StatusSwitchingQP.Settings{T}()
         Results = nothing
         Sense = MOI.MIN_SENSE
-        opt = new(Problem, Settings, Results, Sense)
+        Silent = true
+        opt = new(Problem, Settings, Results, Sense, Silent)
         #= for (key, value) in user_settings
             MOI.set(opt, MOI.RawOptimizerAttribute(string(key)), value)
         end =#
@@ -57,6 +59,11 @@ MOI.get(opt::Optimizer, ::MOI.SolverVersion) = TOML.parsefile(joinpath(pkgdir(St
 MOI.get(opt::Optimizer, ::MOI.RawSolver) = StatusSwitchingQP.solveQP
 MOI.get(opt::Optimizer, ::MOI.ResultCount) = Int(!isnothing(opt.Results))
 #MOI.get(opt::Optimizer, ::MOI.SolveTimeSec)      = 0.0
+
+
+MOI.supports(::Optimizer, ::MOI.Silent) = true
+MOI.get(opt::Optimizer, ::MOI.Silent) = opt.Silent
+MOI.set(opt::Optimizer, ::MOI.Silent, v::Bool) = (opt.Silent=v)
 
 
 
