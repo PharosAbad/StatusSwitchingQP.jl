@@ -52,8 +52,8 @@ const _EXPLICIT_METHOD_FAILURES = [
 ] =#
 
 const _EXPLICIT_METHOD_FAILURES = [
-    #"test_attribute_RawStatusString",
-    #"test_attribute_SolveTimeSec",
+    "test_attribute_RawStatusString",
+    "test_attribute_SolveTimeSec",
     "test_constraint_ScalarAffineFunction",
     "test_constraint_VectorAffineFunction_duplicate",
     "test_linear_FEASIBILITY_SENSE",

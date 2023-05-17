@@ -370,6 +370,10 @@ function MOI2LP(dest::Optimizer{T}, MP) where {T}
         c[term.variable.value] = term.coefficient
     end
 
+    if dest.Sense == MOI.MAX_SENSE
+        c = -c
+    end
+
     A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
 
     #return c, A, b, G, g, d, u
