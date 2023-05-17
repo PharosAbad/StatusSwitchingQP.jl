@@ -166,7 +166,8 @@ function MOI.copy_to(dest::Optimizer{T}, src::MOI.ModelLike) where {T}
     if norm(dest.Problem.V, Inf) == 0   #LP
         #dest.Problem = MOI2LP(dest, src)
         Q = dest.Problem
-        dest.Problem = LP(Q.q, Q.A, Q.b, Q.G, Q.g, Q.d, Q.u, Q.N, Q.M, Q.J)
+        #dest.Problem = LP(Q.q, Q.A, Q.b, Q.G, Q.g, Q.d, Q.u, Q.N, Q.M, Q.J)
+        dest.Problem = LP(Q.q, Q.A, Q.b; G=Q.G, g=Q.g, d=Q.d, u=Q.u)
     end
     return idxmap
 end
@@ -377,7 +378,8 @@ function MOI2LP(dest::Optimizer{T}, MP) where {T}
     A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
 
     #return c, A, b, G, g, d, u
-    return LP(c, A, b, G, g, d, u, N, M, J)
+    #return LP(c, A, b, G, g, d, u, N, M, J)
+    return LP(c, A, b; G=G, g=g, d=d, u=u)
 end
 
 
@@ -444,7 +446,8 @@ function MOI2QP(dest::Optimizer{T}, MP) where {T}
 
     A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
 
-    return QP(V, A, G, q, b, g, d, u, N, M, J)
+    #return QP(V, A, G, q, b, g, d, u, N, M, J)
+    return QP(V; A=A, G=G, q=q, b=b, g=g, d=d, u=u)
 end
 
 

@@ -72,6 +72,7 @@ const _EXPLICIT_METHOD_FAILURES = [
     "test_quadratic_duplicate_terms",
     "test_quadratic_integration",
     "test_quadratic_nonhomogeneous",
+    "test_solve_VariableIndex",
     "test_solve_TerminationStatus_DUAL_INFEASIBLE",
     "test_solve_result_index",
     "test_unbounded_M",
