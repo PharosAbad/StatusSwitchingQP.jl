@@ -201,7 +201,9 @@ function cDantzigLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
     ih = abs.(h) .< tol   # h==0
     x[B] = q
 
-    status = length(ih) > 0 ? 2 : 1
+    #status = length(ih) > 0 ? 2 : 1
+    status = sum(ih) > 0 ? 2 : 1
+    #status = any( S[F][ih] .!= DN) ? 2 : 1
     return status, x, invB
 end
 
@@ -397,7 +399,9 @@ function maxImprvLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
     ih = abs.(h) .< tol   # h==0
     x[B] = q
 
-    status = length(ih) > 0 ? 2 : 1
+    #status = length(ih) > 0 ? 2 : 1
+    status = sum(ih) > 0 ? 2 : 1
+    #status = any( S[F][ih] .!= DN) ? 2 : 1
     return status, x, invB
 
 end
@@ -470,12 +474,13 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     b1 = b0
     d1 = [d0; zeros(T, M0)]
     u1 = [u0; fill(Inf, M0)]
+    nj = N + J
 
     iH, x, invB = solveLP(c1, A1, b1, d1, u1, B, S; invB=invB, q=q, tol=tol)
     f = sum(x[N0+1:end])
     if abs(f) > tol
         #error("feasible region is empty")
-        return x[1:N], S[1:N+J], 0   #0 infeasible
+        return x[1:N], S[1:nj], 0   #0 infeasible
     end
 
     #Phase II    --- --- phase 2 --- ---
@@ -485,7 +490,7 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     m = length(ia)
     c0 = [c; zeros(T, J + n)]
     c0[id] .= -c0[id]
-    c0[N+J+1:end] .= -c0[iv]
+    c0[nj+1:end] .= -c0[iv]
     if m == 0
         S = S[1:N0]
         if !min
@@ -515,15 +520,31 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
 
     #variables: restore free, or flip back
     x = x0[1:N]
-    S = S[1:N+J]
+    S = S[1:nj]
 
-    for k in N+1:N+J    #inequalities
+    for k in N+1:nj    #inequalities
         S[k] = S[k] == IN ? OE : EO
     end
 
     if n > 0    #free variable
-        x[iv] .-= x0[N+J+1:N+J+n]
+        x[iv] .-= x0[nj+1:nj+n]
         S[iv] .= IN
+
+        #always infinitely many solutions when free variables
+        for k in 1:M0
+            if B[k] > nj
+                B[k] = iv[B[k]-nj]
+            end
+        end
+
+        F = trues(nj)
+        F[B] .= false
+        invB = inv(lu(A0[:, B]))
+        Y = invB * A0[:, findall(F)]
+        c0 = c0[1:nj]
+        h = c0[F] - Y' * c0[B]
+        ih = abs.(h) .< tol
+        iH = sum(ih) > 0 ? 2 : 1
     end
 
     m = length(id)

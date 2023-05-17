@@ -38,6 +38,7 @@ with positive semi-definite symmetric matrix $\mathbf{V}\in\mathbb{R}^{N\times N
 * __Fast and Accurate__:  [Speed and Accuracy](https://github.com/PharosAbad/StatusSwitchingQP.jl/wiki/Speed-and-Accuracy)
 * __Open Source__: Our code is available on [GitHub](https://github.com/PharosAbad/StatusSwitchingQP.jl) and distributed under the MIT License
 * __Arbitrary Precision Arithmetic__: fully support for `BigFloat`
+* __Dense Matrix__: For portfolio selection, and $\min(N, M+J) = O(10^2)$
 
 
 ## Installation

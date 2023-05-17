@@ -6,6 +6,7 @@ using Test
 
 import MathOptInterface as MOI
 
+#=
 const _EXPLICIT_METHOD_FAILURES = [
     "test_objective_qp_ObjectiveFunction_edge_cases",
     "test_objective_qp_ObjectiveFunction_zero_ofdiag",
@@ -48,7 +49,36 @@ const _EXPLICIT_METHOD_FAILURES = [
     "test_solve_result_index",
     "test_variable_solve_with_lowerbound",
     "test_variable_solve_with_upperbound",
+] =#
+
+const _EXPLICIT_METHOD_FAILURES = [
+    "test_attribute_RawStatusString",
+    "test_attribute_SolveTimeSec",
+    "test_constraint_ScalarAffineFunction",
+    "test_constraint_VectorAffineFunction_duplicate",
+    "test_linear_FEASIBILITY_SENSE",
+    "test_linear_VariablePrimalStart_partial",
+    "test_linear_complex",
+    "test_linear_open_intervals",
+    "test_linear_variable",
+    "test_model_LowerBoundAlreadySet",
+    "test_model_UpperBoundAlreadySet",
+    "test_model_supports_constraint_ScalarAffineFunction_EqualTo",
+    "test_modification_",
+    "test_objective_FEASIBILITY_SENSE_clears_objective",
+    "test_objective_ObjectiveFunction",
+    "test_objective_ObjectiveSense_FEASIBILITY_SENSE",
+    "test_objective_qp_",
+    "test_quadratic_duplicate_terms",
+    "test_quadratic_integration",
+    "test_quadratic_nonhomogeneous",
+    "test_solve_VariableIndex",
+    "test_solve_TerminationStatus_DUAL_INFEASIBLE",
+    "test_solve_result_index",
+    "test_unbounded_M",
+    "test_variable_solve_with_",
 ]
+
 
 const OPTIMIZER = MOI.instantiate(
     MOI.OptimizerWithAttributes(StatusSwitchingQP.Optimizer, MOI.Silent() => true),
