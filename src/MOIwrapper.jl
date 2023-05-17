@@ -5,7 +5,7 @@ using TOML
 mutable struct Optimizer{T} <: MOI.AbstractOptimizer
     #struct Optimizer <: MOI.AbstractOptimizer
     # Fields go here
-    Problem::Union{Nothing,StatusSwitchingQP.QP{T}}
+    Problem::Union{Nothing,StatusSwitchingQP.QP{T},StatusSwitchingQP.LP{T}}
     Settings::StatusSwitchingQP.Settings{T}
     Results::Union{Nothing,Tuple{Vector{T},Vector{Status},Int}}
     Sense::MOI.OptimizationSense
@@ -58,12 +58,12 @@ MOI.get(opt::Optimizer, ::MOI.SolverName) = "StatusSwitchingQP"
 MOI.get(opt::Optimizer, ::MOI.SolverVersion) = TOML.parsefile(joinpath(pkgdir(StatusSwitchingQP), "Project.toml"))["version"]
 MOI.get(opt::Optimizer, ::MOI.RawSolver) = StatusSwitchingQP.solveQP
 MOI.get(opt::Optimizer, ::MOI.ResultCount) = Int(!isnothing(opt.Results))
-#MOI.get(opt::Optimizer, ::MOI.SolveTimeSec)      = 0.0
+MOI.get(opt::Optimizer, ::MOI.SolveTimeSec)      = 0.1
 
 
 MOI.supports(::Optimizer, ::MOI.Silent) = true
 MOI.get(opt::Optimizer, ::MOI.Silent) = opt.Silent
-MOI.set(opt::Optimizer, ::MOI.Silent, v::Bool) = (opt.Silent=v)
+MOI.set(opt::Optimizer, ::MOI.Silent, v::Bool) = (opt.Silent = v)
 
 
 
@@ -119,7 +119,8 @@ end
 function MOI.supports_constraint(
     ::Optimizer,
     ::Type{MOI.ScalarAffineFunction{T}},
-    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
+    #::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
+    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T}}}) where {T}
     return true
 end
 
@@ -160,6 +161,9 @@ function MOI.copy_to(dest::Optimizer{T}, src::MOI.ModelLike) where {T}
 
     idxmap = MOIU.IndexMap(dest, src)
     dest.Problem = MOI2QP(dest, src)
+    if norm(dest.Problem.V, Inf) == 0   #LP
+        dest.Problem = MOI2LP(dest, src)
+    end
     return idxmap
 end
 
@@ -188,7 +192,18 @@ function MOI.optimize!(opt::Optimizer{T}) where {T}
 
     #opt.Results = solveQP(opt.Problem; settings=opt.Settings, settingsLP=settings) #error
     #opt.Results = solveQP(opt.Problem; settings=opt.Settings, settingsLP=opt.Settings)
-    opt.Results = solveQP(opt.Problem; settings=opt.Settings)
+
+    #opt.Results = solveQP(opt.Problem; settings=opt.Settings)
+    if typeof(opt.Problem) <: QP
+        opt.Results = solveQP(opt.Problem; settings=opt.Settings)
+    else
+
+
+        min = opt.Sense == MOI.MAX_SENSE ? false : true
+        opt.Results = SimplexLP(opt.Problem; settings=opt.Settings, min=min)    # open-intervals, supports `[l, Inf)`, `(-Inf, u]`,  and `(-Inf, Inf)`
+        #opt.Results = solveLP(opt.Problem; settings=opt.Settings)
+    end
+
     nothing
 end
 
@@ -232,9 +247,23 @@ end
 
 MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = false
 
+MOI.supports(::Optimizer, a::MOI.DualStatus) = false
 
+MOI.supports(::Optimizer, ::MOI.PrimalStatus) = true
+function MOI.get(opt::Optimizer, ::MOI.PrimalStatus)
+    !isnothing(opt.Results) || return MOI.NO_SOLUTION
+    st = opt.Results[3]
+    if st == 0
+        return MOI.INFEASIBLE_POINT
+    else
+        return MOI.FEASIBLE_POINT
+    end
+end
 
-function getConstraints(P, N, tol, T)
+MOI.get(opt::Optimizer, ::MOI.RawStatusString) = string(opt.Results[3])
+
+function getConstraints(P, N, T)
+    #function getConstraints(P, N, tol, T)
     #function getConstraints(P::MOIU.Model{T}, N, tol) where {T}
 
     Ab = Vector{Vector{T}}(undef, 0)
@@ -266,18 +295,18 @@ function getConstraints(P, N, tol, T)
                 elseif S <: MOI.LessThan
                     t[end] = s.upper
                     push!(Gg, t)
-                elseif S <: MOI.Interval
-                    row_name = MOI.get(P, MOI.ConstraintName(), cref)
-                    @warn "repacking AffineFunction range rows: " * row_name s.lower s.upper
-                    if abs(s.lower - s.upper) < tol   # an Equality
-                        t[end] = (s.lower + s.upper) / 2
-                        push!(Ab, t)
-                    else    #dispact to Gg
-                        t[end] = s.lower
-                        push!(Gg, -t)
-                        t[end] = s.upper
-                        push!(Gg, t)
-                    end
+                    #= elseif S <: MOI.Interval
+                        row_name = MOI.get(P, MOI.ConstraintName(), cref)
+                        @warn "repacking AffineFunction range rows: " * row_name s.lower s.upper
+                        if abs(s.lower - s.upper) < tol   # an Equality
+                            t[end] = (s.lower + s.upper) / 2
+                            push!(Ab, t)
+                        else    #dispact to Gg
+                            t[end] = s.lower
+                            push!(Gg, -t)
+                            t[end] = s.upper
+                            push!(Gg, t)
+                        end =#
                 else
                     throw(MOI.UnsupportedConstraint{F,S}())
                 end
@@ -287,7 +316,7 @@ function getConstraints(P, N, tol, T)
                     u[f.value] = s.value
                     #display((F,S))
                 else =#
-                    if S <: MOI.GreaterThan
+                if S <: MOI.GreaterThan
                     d[f.value] = s.lower
                 elseif S <: MOI.LessThan
                     u[f.value] = s.upper
@@ -323,8 +352,12 @@ function getConstraints(P, N, tol, T)
     return A, b, G, g, d, u, M, J
 end
 
+function MOI2LP(dest::Optimizer{T}, MP) where {T}
+#function MOI2LP(P::MOIU.Model{T}) where {T}
+    #function MOI2LP(P::MOIU.Model{T}, tol=2^-26) where {T}
 
-function MOI2LP(P::MOIU.Model{T}, tol=2^-26) where {T}
+    P = MOIU.Model{T}()
+    MOI.copy_to(P, MP)
 
     #N = P.constraints.num_variables   #for MOI object only
     N = MOI.get(P, MOI.NumberOfVariables())
@@ -334,7 +367,7 @@ function MOI2LP(P::MOIU.Model{T}, tol=2^-26) where {T}
         c[term.variable.value] = term.coefficient
     end
 
-    A, b, G, g, d, u, M, J = getConstraints(P, N, tol, T)
+    A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
 
     #return c, A, b, G, g, d, u
     return LP(c, A, b, G, g, d, u, N, M, J)
@@ -370,7 +403,7 @@ end
 
 function MOI2QP(dest::Optimizer{T}, MP) where {T}
     #function MOI2QP(P::MOIU.Model{T}, tol=2^-26) where {T}
-    tol = dest.Settings.tol
+    #tol = dest.Settings.tol
     P = MOIU.Model{T}()
     MOI.copy_to(P, MP)
 
@@ -397,7 +430,12 @@ function MOI2QP(dest::Optimizer{T}, MP) where {T}
     end
     #display(q)
 
-    A, b, G, g, d, u, M, J = getConstraints(P, N, tol, T)
+    if dest.Sense == MOI.MAX_SENSE
+        V = -V
+        q = -q
+    end
+
+    A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
 
     return QP(V, A, G, q, b, g, d, u, N, M, J)
 end
