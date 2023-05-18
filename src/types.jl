@@ -44,6 +44,19 @@ struct Event{T<:AbstractFloat}
 end
 
 
+#=
+mc
+1	    OK
+0	    infeasible	"infeasible: Ax=b"
+-1 	    numerical errors
+-10	    "redundant rows in Ax=b"
+-20	    "no inequalities and bounds"
+-30	    "downside bound == upper bound detected"
+-70	    "variance matrix is not positive-semidefinite"
+
+=#
+
+
 
 """
         LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}) where {T}
@@ -79,6 +92,7 @@ struct LP{T<:AbstractFloat}    #standard LP, or structure of LP
     N::Int
     M::Int
     J::Int
+    mc::Int
 end
 
 
@@ -90,6 +104,7 @@ function LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}; N=length(c),
 
     M = length(b)
     J = length(g)
+    mc = 1
 
     (M, N) == size(A) || throw(DimensionMismatch("incompatible dimension: A"))
     (J, N) == size(G) || throw(DimensionMismatch("incompatible dimension: G"))
@@ -98,12 +113,31 @@ function LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}; N=length(c),
 
     #check feasibility and redundancy of Ax=b
     rb = rank([A vec(b)])
-    @assert rb == rank(A) "infeasible: Ax=b"
-    #@assert M == length(getRows(A, tolN)) "redundant rows in Ax=b"   #full row rank
-    @assert M == rb "redundant rows in Ax=b"       #full row rank
+    #@assert rb == rank(A) "infeasible: Ax=b"
+    if !(rb == rank(A))
+        mc = 0
+        @warn "infeasible: Ax=b"
+    end
 
-    @assert !any(d .== u) "downside bound == upper bound detected"
-    @assert J > 0 || any(isfinite.(d)) || any(isfinite.(u)) "no inequalities and bounds"
+    #@assert M == length(getRows(A, tolN)) "redundant rows in Ax=b"   #full row rank
+    #@assert M == rb "redundant rows in Ax=b"       #full row rank
+    if !(M == rb)
+        mc = -10
+        @warn "redundant rows in Ax=b"
+    end
+
+    #@assert !any(d .== u) "downside bound == upper bound detected"
+    if any(d .== u)
+        mc = -30
+        @warn "downside bound == upper bound detected"
+    end
+
+
+    #@assert J > 0 || any(isfinite.(d)) || any(isfinite.(u)) "no inequalities and bounds"
+    if !(J > 0 || any(isfinite.(d)) || any(isfinite.(u)))
+        mc = -20
+        @warn "no inequalities and bounds"
+    end
 
     iu = u .< d
     if sum(iu) > 0
@@ -113,7 +147,7 @@ function LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}; N=length(c),
         d[iu] .= t
     end
 
-    LP{T}(c, A, b, G, g, d, u, N, M, J)
+    LP{T}(c, A, b, G, g, d, u, N, M, J, mc)
 end
 
 
@@ -158,6 +192,7 @@ struct QP{T<:AbstractFloat}    #standard QP, or structure of QP
     N::Int
     M::Int
     J::Int
+    mc::Int
 end
 
 function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
@@ -171,11 +206,18 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
 
     M = length(b)
     J = length(g)
+    mc = 1
 
     (N, N) == size(V) || throw(DimensionMismatch("incompatible dimension: V"))
     V = convert(Matrix{T}, (V + V') / 2)   #make sure symmetric
     #@assert det(V) >= 0 "variance matrix has negative determinant"
-    @assert eigmin(V) > -sqrt(eps(T)) "variance matrix is not positive-semidefinite"
+    #@assert eigmin(V) > -sqrt(eps(T)) "variance matrix is not positive-semidefinite"
+    if eigmin(V) < 0
+        mc = -70
+        @warn "variance matrix is not positive-semidefinite"
+    end
+
+
     (M, N) == size(A) || throw(DimensionMismatch("incompatible dimension: A"))
     (J, N) == size(G) || throw(DimensionMismatch("incompatible dimension: G"))
     N == size(q, 1) || throw(DimensionMismatch("incompatible dimension: q"))
@@ -184,12 +226,29 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
 
     #check feasibility and redundancy of Ax=b
     rb = rank([A vec(b)])
-    @assert rb == rank(A) "infeasible: Ax=b"
-    @assert M == rb "redundant rows in Ax=b"       #full row rank
+    #@assert rb == rank(A) "infeasible: Ax=b"
+    if !(rb == rank(A))
+        mc = 0
+        @warn "infeasible: Ax=b"
+    end
 
-    @assert !any(d .== u) "downside bound == upper bound detected"
-    #J+ (num of finite d u) > 0  , when LP is introduce
-    @assert J > 0 || any(isfinite.(d)) || any(isfinite.(u)) "no any inequalities or bounds"
+    #@assert M == rb "redundant rows in Ax=b"       #full row rank
+    if !(M == rb)
+        mc = -10
+        @warn "redundant rows in Ax=b"
+    end
+
+    #@assert !any(d .== u) "downside bound == upper bound detected"
+    if any(d .== u)
+        mc = -30
+        @warn "downside bound == upper bound detected"
+    end
+
+    #@assert J > 0 || any(isfinite.(d)) || any(isfinite.(u)) "no inequalities and bounds"
+    if !(J > 0 || any(isfinite.(d)) || any(isfinite.(u)))
+        mc = -20
+        @warn "no inequalities and bounds"
+    end
 
     iu = u .< d
     if sum(iu) > 0
@@ -205,32 +264,32 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
         convert(Vector{T}, copy(vec(b))),
         convert(Vector{T}, copy(vec(g))),
         convert(Vector{T}, copy(d)),
-        convert(Vector{T}, copy(u)), N, M, J)
+        convert(Vector{T}, copy(u)), N, M, J, mc)
 end
 
 function QP(P::QP{T}, q, L::T=0.0) where {T}
     #(; V, A, G, q, b, g, d, u, N, M, J) = P
-    (; V, A, G, b, g, d, u, N, M, J) = P
+    (; V, A, G, b, g, d, u, N, M, J, mc) = P
     #q = -L * q
     #return QP(V, A, G, q, b, g, d, u, N, M, J)
-    return QP(V, A, G, -L * q, b, g, d, u, N, M, J)
+    return QP(V, A, G, -L * q, b, g, d, u, N, M, J, mc)
 end
 
 function QP(P::QP{T}, mu::T, q::Vector{T}) where {T}
     #(; V, A, G, q, b, g, d, u, N, M, J) = P
-    (; V, A, G, b, g, d, u, N, M, J) = P
+    (; V, A, G, b, g, d, u, N, M, J, mc) = P
     #q = zeros(T, N)
     M += 1
     Am = [A; q']
     bm = [b; mu]
-    return QP(V, Am, G, zeros(T, N), bm, g, d, u, N, M, J)
+    return QP(V, Am, G, zeros(T, N), bm, g, d, u, N, M, J, mc)
 end
 
 function QP(P::LP{T}) where {T}
 
-    (; c, A, b, G, g, d, u, N, M, J) = P
+    (; c, A, b, G, g, d, u, N, M, J, mc) = P
     v = abs.(c) .+ 0.5
-    return QP(diagm(v), A, G, zeros(T, length(c)), b, g, d, u, N, M, J)
+    return QP(diagm(v), A, G, zeros(T, length(c)), b, g, d, u, N, M, J, mc)
 end
 
 """

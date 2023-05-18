@@ -195,7 +195,7 @@ function MOIU.IndexMap(dest::Optimizer, src::MOI.ModelLike)
 end
 =#
 
-
+#=
 function variablesMap(src::MOI.ModelLike)
     #https://github.com/jump-dev/GLPK.jl/blob/master/src/MOI_wrapper/MOI_copy.jl#L79  _init_index_map
     variables = MOI.get(src, MOI.ListOfVariableIndices())
@@ -207,6 +207,7 @@ function variablesMap(src::MOI.ModelLike)
     end
     return variables, map
 end
+=#
 
 
 function MOI.optimize!(opt::Optimizer{T}) where {T}
@@ -255,6 +256,18 @@ MOI.OPTIMAL,
     MOI.NUMERICAL_ERROR
 =#
 
+function MOI.get(opt::Optimizer, a::MOI.ObjectiveValue)
+    MOI.check_result_index_bounds(opt, a)
+    x = opt.Results[1]
+    if typeof(opt.Problem) <: QP
+        f = x' * (opt.Problem.V * x) / 2 + opt.Problem.q' * x
+    else
+        f = x' * opt.Problem.c
+    end
+    return opt.Sense == MOI.MIN_SENSE ? f : -f
+end
+
+
 MOI.supports(::Optimizer, ::MOI.VariablePrimal) = true
 function MOI.get(opt::Optimizer, a::MOI.VariablePrimal, vi::MOI.VariableIndex)
     MOI.check_result_index_bounds(opt, a)
@@ -269,6 +282,9 @@ MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = false
 
 MOI.supports(::Optimizer, a::MOI.DualStatus) = true
 MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.NO_SOLUTION
+#MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.FEASIBLE_POINT
+
+
 
 MOI.supports(::Optimizer, ::MOI.PrimalStatus) = true
 function MOI.get(opt::Optimizer, ::MOI.PrimalStatus)
@@ -282,6 +298,11 @@ function MOI.get(opt::Optimizer, ::MOI.PrimalStatus)
 end
 
 MOI.get(opt::Optimizer, ::MOI.RawStatusString) = string(opt.Results[3])
+
+MOI.supports(::Optimizer, ::MOI.ConstraintDual) = false
+
+
+
 
 function getConstraints(P, N, T)
     #function getConstraints(P, N, tol, T)
@@ -455,7 +476,7 @@ function MOI2QP(dest::Optimizer{T}, MP) where {T}
     # f = (1/2)z′Vz+q′z     the 0.5 factor in front of the Q matrix is a common source of bugs
     V = zeros(T, N, N)
     for term in f.quadratic_terms
-        V[term.variable_1.value, term.variable_2.value] = term.coefficient
+        V[term.variable_1.value, term.variable_2.value] += term.coefficient     #duplicate_terms
     end
     for i in 2:N
         for j in 1:i

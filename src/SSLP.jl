@@ -186,7 +186,10 @@ See also [`Status`](@ref), [`LP`](@ref), [`Settings`](@ref)
 
 """
 function solveLP(Q::LP{T}; settings=Settings{T}()) where {T}
-    (; c, A, b, G, g, d, u, M, J) = Q
+    (; c, A, b, G, g, d, u, M, J, mc) = Q
+    if mc <= 0
+        return zeros(T, N), fill(DN, N), -1
+    end
 
     if J == 0 && M == 0 #a box
         #display("W = 0, K = 0, J = 0, a box")
