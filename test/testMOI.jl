@@ -59,7 +59,7 @@ const _EXPLICIT_METHOD_FAILURES = [
     "test_linear_FEASIBILITY_SENSE",
     "test_linear_VariablePrimalStart_partial",
     "test_linear_complex",
-    "test_linear_open_intervals",
+    #"test_linear_open_intervals",
     "test_linear_variable",
     "test_model_LowerBoundAlreadySet",
     "test_model_UpperBoundAlreadySet",

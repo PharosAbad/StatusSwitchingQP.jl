@@ -1,5 +1,4 @@
-import MathOptInterface as MOI
-import MathOptInterface.Utilities as MOIU
+
 using TOML
 
 mutable struct Optimizer{T} <: MOI.AbstractOptimizer
@@ -160,18 +159,20 @@ VariablePrimal
 
 function MOI.copy_to(dest::Optimizer{T}, src::MOI.ModelLike) where {T}
 
-    idxmap = MOIU.IndexMap(dest, src)
+    #idxmap = MOIU.IndexMap(dest, src)
+    #variables, map = variablesMap(src)
     dest.Sense = MOI.get(src, MOI.ObjectiveSense())
-    dest.Problem = MOI2QP(dest, src)
+    map, dest.Problem = MOI2QP(dest, src)
     if norm(dest.Problem.V, Inf) == 0   #LP
-        #dest.Problem = MOI2LP(dest, src)
+        #map, dest.Problem = MOI2LP(dest, src)
         Q = dest.Problem
         #dest.Problem = LP(Q.q, Q.A, Q.b, Q.G, Q.g, Q.d, Q.u, Q.N, Q.M, Q.J)
         dest.Problem = LP(Q.q, Q.A, Q.b; G=Q.G, g=Q.g, d=Q.d, u=Q.u)
     end
-    return idxmap
+    return map
 end
 
+#=
 function MOIU.IndexMap(dest::Optimizer, src::MOI.ModelLike)
 
     idxmap = MOIU.IndexMap()
@@ -192,6 +193,21 @@ function MOIU.IndexMap(dest::Optimizer, src::MOI.ModelLike)
 
     return idxmap
 end
+=#
+
+
+function variablesMap(src::MOI.ModelLike)
+    #https://github.com/jump-dev/GLPK.jl/blob/master/src/MOI_wrapper/MOI_copy.jl#L79  _init_index_map
+    variables = MOI.get(src, MOI.ListOfVariableIndices())
+    map = MOIU.IndexMap()
+    k = 0
+    for x in variables
+        k += 1
+        map[x] = MOI.VariableIndex(k)
+    end
+    return variables, map
+end
+
 
 function MOI.optimize!(opt::Optimizer{T}) where {T}
 
@@ -251,7 +267,8 @@ end
 
 MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = false
 
-MOI.supports(::Optimizer, a::MOI.DualStatus) = false
+MOI.supports(::Optimizer, a::MOI.DualStatus) = true
+MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.NO_SOLUTION
 
 MOI.supports(::Optimizer, ::MOI.PrimalStatus) = true
 function MOI.get(opt::Optimizer, ::MOI.PrimalStatus)
@@ -361,7 +378,7 @@ function MOI2LP(dest::Optimizer{T}, MP) where {T}
     #function MOI2LP(P::MOIU.Model{T}, tol=2^-26) where {T}
 
     P = MOIU.Model{T}()
-    MOI.copy_to(P, MP)
+    map = MOI.copy_to(P, MP)
 
     #N = P.constraints.num_variables   #for MOI object only
     N = MOI.get(P, MOI.NumberOfVariables())
@@ -379,12 +396,27 @@ function MOI2LP(dest::Optimizer{T}, MP) where {T}
 
     #return c, A, b, G, g, d, u
     #return LP(c, A, b, G, g, d, u, N, M, J)
-    return LP(c, A, b; G=G, g=g, d=d, u=u)
+    return map, LP(c, A, b; G=G, g=g, d=d, u=u)
 end
 
 
 function LP2MOI(P::LP{T}) where {T}
     (; c, A, b, G, g, d, u, N, M, J) = P
+
+    #= if VERSION ≥ v"1.7.0"
+        (; c, A, b, G, g, d, u, N, M, J) = P
+    else
+        c = P.c
+        A = P.A
+        b = P.b
+        G = P.G
+        g = P.g
+        d = P.d
+        u = P.u
+        N = P.N
+        M = P.M
+        J = P.J
+    end =#
 
     H = MOIU.Model{T}()
     x = MOI.add_variables(H, N)
@@ -414,7 +446,7 @@ function MOI2QP(dest::Optimizer{T}, MP) where {T}
     #function MOI2QP(P::MOIU.Model{T}, tol=2^-26) where {T}
     #tol = dest.Settings.tol
     P = MOIU.Model{T}()
-    MOI.copy_to(P, MP)
+    map = MOI.copy_to(P, MP)
 
     N = MOI.get(P, MOI.NumberOfVariables())
     f = MOI.get(P, MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction{T}}())
@@ -447,12 +479,27 @@ function MOI2QP(dest::Optimizer{T}, MP) where {T}
     A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
 
     #return QP(V, A, G, q, b, g, d, u, N, M, J)
-    return QP(V; A=A, G=G, q=q, b=b, g=g, d=d, u=u)
+    return map, QP(V; A=A, G=G, q=q, b=b, g=g, d=d, u=u)
 end
 
 
 function QP2MOI(P::QP{T}) where {T}
     (; V, A, G, q, b, g, d, u, N, M, J) = P
+    #= if VERSION ≥ v"1.7.0"
+        (; V, A, G, q, b, g, d, u, N, M, J) = P
+    else
+        V = P.V
+        A = P.A
+        G = P.G
+        q = P.q
+        b = P.b
+        g = P.g
+        d = P.d
+        u = P.u
+        N = P.N
+        M = P.M
+        J = P.J
+    end =#
 
     H = MOIU.Model{T}()
     x = MOI.add_variables(H, N)
