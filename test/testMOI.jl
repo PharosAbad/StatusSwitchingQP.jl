@@ -25,6 +25,8 @@ function test_runtests()
             MOI.VariableBasisStatus,
             MOI.ConstraintBasisStatus,
             MOI.ObjectiveBound,
+            MOI.ConstraintDual,
+            MOI.DualObjectiveValue,
         ],
     )
     model = MOI.instantiate(
