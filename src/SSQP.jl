@@ -223,6 +223,9 @@ end
 
 function solveQP(Q::QP{T}; settings=Settings{T}(), settingsLP=settings) where {T}
     #x0, S, status = initSSQP(Q, settingsLP)
+    if Q.mc <= 0
+        return zeros(T, N), fill(DN, N), -1
+    end
     x0, S, status = initQP(Q, settingsLP)
     if status <= 0  #infeasible or numerical error
         return x0, S, status
