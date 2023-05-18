@@ -33,7 +33,7 @@ using Test
 
     H = StatusSwitchingQP.QP2MOI(P)
     PO = StatusSwitchingQP.Optimizer()
-    P1 = StatusSwitchingQP.MOI2QP(PO, H)
+    _map, P1 = StatusSwitchingQP.MOI2QP(PO, H)
 
     @test P1.N == P.N
 

@@ -4,6 +4,9 @@ using LinearAlgebra
 using PrecompileTools
 #PrecompileTools.verbose[] = true
 
+import MathOptInterface as MOI
+import MathOptInterface.Utilities as MOIU
+
 
 include("./types.jl")
 export Status, IN, DN, UP, OE, EO, Event
