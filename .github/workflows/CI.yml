@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - '1.8'
+          - '1.6'  # The Long-Term Support (LTS) version of Julia 
           - '1'
         os:
           - ubuntu-latest
