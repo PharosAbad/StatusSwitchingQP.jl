@@ -209,28 +209,19 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
 end
 
 function QP(P::QP{T}, q, L::T=0.0) where {T}
-    #(; V, A, G, q, b, g, d, u, N, M, J) = P
-    (; V, A, G, b, g, d, u, N, M, J) = P
-    #q = -L * q
-    #return QP(V, A, G, q, b, g, d, u, N, M, J)
-    return QP(V, A, G, -L * q, b, g, d, u, N, M, J)
+    return QP(P.V, P.A, P.G, -L * q, P.b, P.g, P.d, P.u, P.N, P.M, P.J)
 end
 
 function QP(P::QP{T}, mu::T, q::Vector{T}) where {T}
-    #(; V, A, G, q, b, g, d, u, N, M, J) = P
-    (; V, A, G, b, g, d, u, N, M, J) = P
-    #q = zeros(T, N)
-    M += 1
-    Am = [A; q']
-    bm = [b; mu]
-    return QP(V, Am, G, zeros(T, N), bm, g, d, u, N, M, J)
+    M = P.M + 1
+    Am = [P.A; q']
+    bm = [P.b; mu]
+    return QP(P.V, Am, P.G, zeros(T, P.N), bm, P.g, P.d, P.u, P.N, P.M, P.J)
 end
 
 function QP(P::LP{T}) where {T}
-
-    (; c, A, b, G, g, d, u, N, M, J) = P
-    v = abs.(c) .+ 0.5
-    return QP(diagm(v), A, G, zeros(T, length(c)), b, g, d, u, N, M, J)
+    v = abs.(P.c) .+ 0.5
+    return QP(diagm(v), P.A, P.G, zeros(T, length(P.c)), P.b, P.g, P.d, P.u, P.N, P.M, P.J)
 end
 
 """
