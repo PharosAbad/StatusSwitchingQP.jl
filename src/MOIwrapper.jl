@@ -1,15 +1,18 @@
 
 using TOML
 
+#=
+much thanks to [Oscar Dowson](https://github.com/odow), who improved this code by PRs, and help me to remove the errors
+=#
+
 mutable struct Optimizer{T} <: MOI.AbstractOptimizer
-    #struct Optimizer <: MOI.AbstractOptimizer
-    # Fields go here
     Problem::Union{Nothing,StatusSwitchingQP.QP{T},StatusSwitchingQP.LP{T}}
     Settings::StatusSwitchingQP.Settings{T}
     Results::Union{Nothing,Tuple{Vector{T},Vector{Status},Int}}
     Sense::MOI.OptimizationSense
     Silent::Bool
-    f0::T
+    f0::T   #constant term in objective function
+    solTime::Float64
 
     function Optimizer{T}(; user_settings...) where {T}
         Problem = nothing
@@ -18,10 +21,8 @@ mutable struct Optimizer{T} <: MOI.AbstractOptimizer
         Sense = MOI.MIN_SENSE
         Silent = true
         f0 = T(0)
-        opt = new(Problem, Settings, Results, Sense, Silent, f0)
-        #= for (key, value) in user_settings
-            MOI.set(opt, MOI.RawOptimizerAttribute(string(key)), value)
-        end =#
+        solTime = 0.01
+        opt = new(Problem, Settings, Results, Sense, Silent, f0, solTime)
         if isempty(user_settings)  #default setting
             return opt
         end
@@ -30,15 +31,12 @@ mutable struct Optimizer{T} <: MOI.AbstractOptimizer
     end
 end
 
-Optimizer(args...; kwargs...) = Optimizer{Float64}(args...; kwargs...)
 
-#=
-All Optimizers must implement the following methods:
+Optimizer(args...; kwargs...) = Optimizer{Float64}(args...; kwargs...)  #Settings thr kwargs
 
+#= All Optimizers must implement the following methods:
 empty!
-is_empty
-
-=#
+is_empty    =#
 
 
 function MOI.empty!(opt::Optimizer{T}) where {T}
@@ -53,13 +51,14 @@ MOI.is_empty(opt::Optimizer{T}) where {T} = isnothing(opt.Problem)
 
 
 
+
 # Solver Attributes, get/set
 
 MOI.get(opt::Optimizer, ::MOI.SolverName) = "StatusSwitchingQP"
 MOI.get(opt::Optimizer, ::MOI.SolverVersion) = TOML.parsefile(joinpath(pkgdir(StatusSwitchingQP), "Project.toml"))["version"]
 MOI.get(opt::Optimizer, ::MOI.RawSolver) = StatusSwitchingQP.solveQP
 MOI.get(opt::Optimizer, ::MOI.ResultCount) = Int(!isnothing(opt.Results))
-MOI.get(opt::Optimizer, ::MOI.SolveTimeSec) = 0.1
+MOI.get(opt::Optimizer, ::MOI.SolveTimeSec) = opt.solTime
 
 
 MOI.supports(::Optimizer, ::MOI.Silent) = true
@@ -75,62 +74,22 @@ end
 =#
 
 
-#=
-For each attribute
-
-get gets the current value of the attribute
-set sets a new value of the attribute. Not all attributes can be set. For example, the user can't modify the SolverName.
-supports returns a Bool indicating whether the solver supports the attribute.
-
-=#
-
 
 #needed by JuMP
-#=
-function MOI.supports(::Optimizer{T},
-    ::Union{MOI.ObjectiveFunction{MOI.ScalarAffineFunction{T}},MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction{T}}}) where {T}
-    return true
-end
-#MOI.supports(::Optimizer, ::MOI.ObjectiveFunction{Quadratic}) = true
-function MOI.supports(::Optimizer,
-    ::Type{<:Union{MOI.ObjectiveFunction{MOI.ScalarAffineFunction},MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction}}})
-    return true
-end
-
-function MOI.supports(::Optimizer,
-    ::Type{MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction}})
-    return true
-end
-=#
-
-#MOI.supports(::Optimizer, ::Type{MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction}}) = true
-
 MOI.supports(::Optimizer{T}, ::MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction{T}}) where {T} = true
 MOI.supports(::Optimizer{T}, ::MOI.ObjectiveFunction{MOI.ScalarAffineFunction{T}}) where {T} = true
-
-#=
-function MOI.supports_constraint(::Optimizer{T},
-    ::Union{MOI.VariableIndex,MOI.ScalarAffineFunction{T}},
-    ::Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}) where {T}
-    return true
-end
-=#
-
-
 
 function MOI.supports_constraint(
     ::Optimizer{T},
     ::Type{MOI.ScalarAffineFunction{T}},
-    #::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
-    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T}}}) where {T}
+    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T}}}) where {T}   #MOI.Interval not native
     return true
 end
 
 function MOI.supports_constraint(
     ::Optimizer{T},
     ::Type{MOI.VariableIndex},
-    #::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
-    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.Interval{T}}}) where {T}
+    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.Interval{T}}}) where {T}     #MOI.Interval not native
     return true
 end
 
@@ -139,11 +98,53 @@ end
 
 #=
 If your solver separates data loading and the actual optimization into separate steps, implement the copy_to interface.
-
 copy_to(::ModelLike, ::ModelLike)
 optimize!(::ModelLike)
+=#
 
-All Optimizers must implement the following attributes:
+function MOI.copy_to(dest::Optimizer{T}, src::MOI.ModelLike) where {T}
+    dest.Sense = MOI.get(src, MOI.ObjectiveSense())
+    map, dest.Problem = MOI2QP(dest, src)
+    if norm(dest.Problem.V, Inf) == 0   #LP
+        Q = dest.Problem
+        dest.Problem = LP(Q.q, Q.A, Q.b; G=Q.G, g=Q.g, d=Q.d, u=Q.u)
+    end
+    return map
+end
+
+
+function MOI.optimize!(opt::Optimizer{T}) where {T}
+    P = opt.Problem
+    if P.mc == -20  # pre-solve "bad" models
+        N = P.N
+        if P.M > 0
+            x = P.A \ P.b
+            opt.Results = (x, fill(DN, N), 1)
+        else  #no constraints
+            if typeof(P) <: QP
+                o = norm(P.V, Inf) == 0 && norm(P.q, Inf) == 0
+            else
+                o = norm(P.c, Inf) == 0
+            end
+            opt.Results = (zeros(T, N), fill(DN, N), o ? 1 : 3)     # 1 for no objective function
+        end
+        return nothing
+    end
+
+    #opt.Results = solveQP(opt.Problem; settings=opt.Settings, settingsLP=settings) #error, why?
+    t0 = time()
+    if typeof(opt.Problem) <: QP
+        opt.Results = solveQP(opt.Problem; settings=opt.Settings)
+    else
+        opt.Results = SimplexLP(opt.Problem; settings=opt.Settings)
+    end
+    opt.solTime = time() - t0
+    nothing
+end
+
+
+
+#= All Optimizers must implement the following attributes:
 
 DualStatus
 PrimalStatus
@@ -155,97 +156,29 @@ You should also implement the following attributes:
 
 ObjectiveValue
 SolveTimeSec
-VariablePrimal
-=#
+VariablePrimal  =#
 
-
-function MOI.copy_to(dest::Optimizer{T}, src::MOI.ModelLike) where {T}
-
-    #idxmap = MOIU.IndexMap(dest, src)
-    #variables, map = variablesMap(src)
-    dest.Sense = MOI.get(src, MOI.ObjectiveSense())
-    map, dest.Problem = MOI2QP(dest, src)
-    if norm(dest.Problem.V, Inf) == 0   #LP
-        #map, dest.Problem = MOI2LP(dest, src)
-        Q = dest.Problem
-        #dest.Problem = LP(Q.q, Q.A, Q.b, Q.G, Q.g, Q.d, Q.u, Q.N, Q.M, Q.J)
-        dest.Problem = LP(Q.q, Q.A, Q.b; G=Q.G, g=Q.g, d=Q.d, u=Q.u)
-    end
-    return map
+MOI.supports(::Optimizer, a::MOI.DualStatus) = true
+function MOI.get(::Optimizer, attr::MOI.DualStatus)
+    return attr.result_index == 1 ? MOI.FEASIBLE_POINT : MOI.NO_SOLUTION    #no Dual info, NO_SOLUTION if id>1
 end
 
-#=
-function MOIU.IndexMap(dest::Optimizer, src::MOI.ModelLike)
 
-    idxmap = MOIU.IndexMap()
-
-    vis_src = MOI.get(src, MOI.ListOfVariableIndices())
-    for i in eachindex(vis_src)
-        idxmap[vis_src[i]] = MOI.VariableIndex(i)
+MOI.supports(::Optimizer, ::MOI.PrimalStatus) = true
+function MOI.get(opt::Optimizer, attr::MOI.PrimalStatus)
+    if attr.result_index != 1    #thanks to Oscar Dowson, https://github.com/odow
+        return MOI.NO_SOLUTION
     end
-    i = 0
-    for (F, S) in MOI.get(src, MOI.ListOfConstraintTypesPresent())
-        MOI.supports_constraint(dest, F, S) || throw(MOI.UnsupportedConstraint{F,S}())
-        cis_src = MOI.get(src, MOI.ListOfConstraintIndices{F,S}())
-        for ci in cis_src
-            i += 1
-            idxmap[ci] = MOI.ConstraintIndex{F,S}(i)
-        end
-    end
-
-    return idxmap
-end
-=#
-
-#=
-function variablesMap(src::MOI.ModelLike)
-    #https://github.com/jump-dev/GLPK.jl/blob/master/src/MOI_wrapper/MOI_copy.jl#L79  _init_index_map
-    variables = MOI.get(src, MOI.ListOfVariableIndices())
-    map = MOIU.IndexMap()
-    k = 0
-    for x in variables
-        k += 1
-        map[x] = MOI.VariableIndex(k)
-    end
-    return variables, map
-end
-=#
-
-
-function MOI.optimize!(opt::Optimizer{T}) where {T}
-
-    P = opt.Problem
-    if P.mc == -20
-        N = P.N
-        if P.M > 0
-            x = P.A \ P.b
-            opt.Results = (x, fill(DN, N), 1)
-        else  #no constraints
-            if typeof(P) <: QP
-                o = norm(P.V, Inf) == 0 && norm(P.q, Inf) == 0
-            else
-                o = norm(P.c, Inf) == 0
-            end
-            opt.Results = (zeros(T, N), fill(DN, N), o ? 1 : 3)
-        end
-        return nothing
-    end
-
-    #opt.Results = solveQP(opt.Problem; settings=opt.Settings, settingsLP=settings) #error
-    #opt.Results = solveQP(opt.Problem; settings=opt.Settings, settingsLP=opt.Settings)
-
-    #opt.Results = solveQP(opt.Problem; settings=opt.Settings)
-    if typeof(opt.Problem) <: QP
-        opt.Results = solveQP(opt.Problem; settings=opt.Settings)
+    !isnothing(opt.Results) || return MOI.NO_SOLUTION
+    st = opt.Results[3]
+    if st == 0
+        return MOI.INFEASIBLE_POINT
     else
-        #min = opt.Sense == MOI.MAX_SENSE ? false : true
-        #opt.Results = SimplexLP(opt.Problem; settings=opt.Settings, min=min)    # open-intervals, supports `[l, Inf)`, `(-Inf, u]`,  and `(-Inf, Inf)`
-        #opt.Results = solveLP(opt.Problem; settings=opt.Settings)
-        opt.Results = SimplexLP(opt.Problem; settings=opt.Settings)
+        return MOI.FEASIBLE_POINT
     end
-
-    nothing
 end
+
+MOI.get(opt::Optimizer, ::MOI.RawStatusString) = string(opt.Results[3])
 
 
 MOI.supports(::Optimizer, ::MOI.TerminationStatus) = true
@@ -266,16 +199,6 @@ function MOI.get(opt::Optimizer, ::MOI.TerminationStatus)
     end
 end
 
-#=
-MOI.OPTIMAL,
-    MOI.ITERATION_LIMIT,
-    MOI.TIME_LIMIT,
-    MOI.INFEASIBLE,
-    MOI.DUAL_INFEASIBLE,
-    MOI.ALMOST_OPTIMAL,
-    MOI.NUMERICAL_ERROR,
-    MOI.NUMERICAL_ERROR
-=#
 
 function MOI.get(opt::Optimizer, a::MOI.ObjectiveValue)
     MOI.check_result_index_bounds(opt, a)
@@ -288,9 +211,6 @@ function MOI.get(opt::Optimizer, a::MOI.ObjectiveValue)
     return (opt.Sense == MOI.MIN_SENSE ? f : -f) + opt.f0
 end
 
-MOI.supports(::Optimizer, ::MOI.DualObjectiveValue) = false
-
-
 
 MOI.supports(::Optimizer, ::MOI.VariablePrimal) = true
 function MOI.get(opt::Optimizer, a::MOI.VariablePrimal, vi::MOI.VariableIndex)
@@ -302,47 +222,16 @@ function MOI.get(opt::Optimizer, a::MOI.VariablePrimal)
     return opt.Results[1]
 end
 
+
+#do not support
+MOI.supports(::Optimizer, ::MOI.ConstraintDual) = false
+MOI.supports(::Optimizer, ::MOI.DualObjectiveValue) = false
 MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = false
 
-MOI.supports(::Optimizer, a::MOI.DualStatus) = true
-#MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.NO_SOLUTION
-#MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.FEASIBLE_POINT
-function MOI.get(::Optimizer, attr::MOI.DualStatus)
-    return attr.result_index == 1 ? MOI.FEASIBLE_POINT : MOI.NO_SOLUTION
-end
-
-
-
-
-
-MOI.supports(::Optimizer, ::MOI.PrimalStatus) = true
-function MOI.get(opt::Optimizer, attr::MOI.PrimalStatus)
-    if attr.result_index != 1    #988 passed, 4 failed, 127 errored
-        return MOI.NO_SOLUTION
-    end
-    !isnothing(opt.Results) || return MOI.NO_SOLUTION
-    st = opt.Results[3]
-    if st == 0
-        return MOI.INFEASIBLE_POINT
-    else
-        return MOI.FEASIBLE_POINT
-    end
-end
-
-MOI.get(opt::Optimizer, ::MOI.RawStatusString) = string(opt.Results[3])
-
-MOI.supports(::Optimizer, ::MOI.ConstraintDual) = false
-#= MOI.supports(::Optimizer, ::MOI.ConstraintDual) = true
-function MOI.get(opt::Optimizer, a::MOI.ConstraintDual, ci::MOI.ConstraintIndex)
-
-    return opt.Results[1][1]
-end =#
 
 
 
 function getConstraints(P, N, T)
-    #function getConstraints(P, N, tol, T)
-    #function getConstraints(P::MOIU.Model{T}, N, tol) where {T}
 
     Ab = Vector{Vector{T}}(undef, 0)
     Gg = Vector{Vector{T}}(undef, 0)  #<=
@@ -427,17 +316,14 @@ function getConstraints(P, N, T)
         g[k] = Gg[k][end]
     end
 
-    return A, b, G, g, d, u, M, J
+    #return A, b, G, g, d, u, M, J
+    return A, b, G, g, d, u
 end
 
 function MOI2LP(dest::Optimizer{T}, MP) where {T}
-    #function MOI2LP(P::MOIU.Model{T}) where {T}
-    #function MOI2LP(P::MOIU.Model{T}, tol=2^-26) where {T}
 
     P = MOIU.Model{T}()
     map = MOI.copy_to(P, MP)
-
-    #N = P.constraints.num_variables   #for MOI object only
     N = MOI.get(P, MOI.NumberOfVariables())
     f = MOI.get(P, MOI.ObjectiveFunction{MOI.ScalarAffineFunction{T}}())
     c = zeros(T, N)
@@ -449,10 +335,9 @@ function MOI2LP(dest::Optimizer{T}, MP) where {T}
         c = -c
     end
 
-    A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
+    #A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
+    A, b, G, g, d, u = getConstraints(P, N, T)
 
-    #return c, A, b, G, g, d, u
-    #return LP(c, A, b, G, g, d, u, N, M, J)
     return map, LP(c, A, b; G=G, g=g, d=d, u=u)
 end
 
@@ -500,14 +385,11 @@ end
 
 
 function MOI2QP(dest::Optimizer{T}, MP) where {T}
-    #function MOI2QP(P::MOIU.Model{T}, tol=2^-26) where {T}
-    #tol = dest.Settings.tol
     P = MOIU.Model{T}()
     map = MOI.copy_to(P, MP)
 
     N = MOI.get(P, MOI.NumberOfVariables())
     f = MOI.get(P, MOI.ObjectiveFunction{MOI.ScalarQuadraticFunction{T}}())
-    #display(f)
 
     # f = (1/2)z′Vz+q′z     the 0.5 factor in front of the Q matrix is a common source of bugs
     V = zeros(T, N, N)
@@ -516,19 +398,15 @@ function MOI2QP(dest::Optimizer{T}, MP) where {T}
     end
     for i in 2:N
         for j in 1:i-1
-            V[i, j] += V[j, i]
+            V[i, j] += V[j, i]  #Duplicate off-diagonal terms
             V[j, i] = V[i, j]   #make sure symmetric
         end
     end
-    #V = (V + V') / 2    #Duplicate off-diagonal terms
-    #display(V)
 
     q = zeros(T, N)
     for term in f.affine_terms
-        #q[term.variable.value] = 2 * term.coefficient
-        q[term.variable.value] += term.coefficient  ##duplicate_terms
+        q[term.variable.value] += term.coefficient  #duplicate_terms
     end
-    #display(q)
 
     dest.f0 = f.constant
 
@@ -537,7 +415,8 @@ function MOI2QP(dest::Optimizer{T}, MP) where {T}
         q = -q
     end
 
-    A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
+    #A, b, G, g, d, u, M, J = getConstraints(P, N, T) #getConstraints(P, N, tol, T)
+    A, b, G, g, d, u = getConstraints(P, N, T)
 
     #return QP(V, A, G, q, b, g, d, u, N, M, J)
     return map, QP(V; A=A, G=G, q=q, b=b, g=g, d=d, u=u)
@@ -590,8 +469,6 @@ function QP2MOI(P::QP{T}) where {T}
     for k in 1:N
         MOI.add_constraint(H, x[k], MOI.Interval(d[k], u[k]))
     end
-
     #print(H)
     return H
-
 end
