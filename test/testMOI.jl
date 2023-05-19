@@ -211,8 +211,8 @@ function test_runtests()
         exclude=String[
             "test_model_LowerBoundAlreadySet",
             "test_model_UpperBoundAlreadySet",
-            "test_model_supports_constraint_ScalarAffineFunction_EqualTo",
-            #= "test_constraint_ScalarAffineFunction_EqualTo",
+            #= "test_model_supports_constraint_ScalarAffineFunction_EqualTo",
+            "test_constraint_ScalarAffineFunction_EqualTo",
             "test_modification_const_scalar_objective",
             "test_modification_const_vectoraffine_zeros",
             "test_objective_ObjectiveFunction",
