@@ -9,6 +9,7 @@ mutable struct Optimizer{T} <: MOI.AbstractOptimizer
     Results::Union{Nothing,Tuple{Vector{T},Vector{Status},Int}}
     Sense::MOI.OptimizationSense
     Silent::Bool
+    f0::T
 
     function Optimizer{T}(; user_settings...) where {T}
         Problem = nothing
@@ -16,7 +17,8 @@ mutable struct Optimizer{T} <: MOI.AbstractOptimizer
         Results = nothing
         Sense = MOI.MIN_SENSE
         Silent = true
-        opt = new(Problem, Settings, Results, Sense, Silent)
+        f0 = T(0)
+        opt = new(Problem, Settings, Results, Sense, Silent, f0)
         #= for (key, value) in user_settings
             MOI.set(opt, MOI.RawOptimizerAttribute(string(key)), value)
         end =#
@@ -117,7 +119,7 @@ end
 
 
 function MOI.supports_constraint(
-    ::Optimizer,
+    ::Optimizer{T},
     ::Type{MOI.ScalarAffineFunction{T}},
     #::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
     ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T}}}) where {T}
@@ -125,7 +127,7 @@ function MOI.supports_constraint(
 end
 
 function MOI.supports_constraint(
-    ::Optimizer,
+    ::Optimizer{T},
     ::Type{MOI.VariableIndex},
     #::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
     ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.Interval{T}}}) where {T}
@@ -212,6 +214,23 @@ end
 
 function MOI.optimize!(opt::Optimizer{T}) where {T}
 
+    P = opt.Problem
+    if P.mc == -20
+        N = P.N
+        if P.M > 0
+            x = P.A \ P.b
+            opt.Results = (x, fill(DN, N), 1)
+        else  #no constraints
+            if typeof(P) <: QP
+                o = norm(P.V, Inf) == 0 && norm(P.q, Inf) == 0
+            else
+                o = norm(P.c, Inf) == 0
+            end
+            opt.Results = (zeros(T, N), fill(DN, N), o ? 1 : 3)
+        end
+        return nothing
+    end
+
     #opt.Results = solveQP(opt.Problem; settings=opt.Settings, settingsLP=settings) #error
     #opt.Results = solveQP(opt.Problem; settings=opt.Settings, settingsLP=opt.Settings)
 
@@ -234,7 +253,9 @@ function MOI.get(opt::Optimizer, ::MOI.TerminationStatus)
     !isnothing(opt.Results) || return MOI.OPTIMIZE_NOT_CALLED
     # > 0 if successful (=iter_count); = 0 if infeasibility detected; < 0 fail (=-1 if numerical error, =-maxIter if not converged)
     st = opt.Results[3]
-    if st > 0
+    if st == 3
+        return MOI.INFEASIBLE_OR_UNBOUNDED
+    elseif st == 1 || st == 2
         return MOI.OPTIMAL
     elseif st == 0
         return MOI.INFEASIBLE
@@ -264,8 +285,11 @@ function MOI.get(opt::Optimizer, a::MOI.ObjectiveValue)
     else
         f = x' * opt.Problem.c
     end
-    return opt.Sense == MOI.MIN_SENSE ? f : -f
+    return (opt.Sense == MOI.MIN_SENSE ? f : -f) + opt.f0
 end
+
+MOI.supports(::Optimizer, ::MOI.DualObjectiveValue) = false
+
 
 
 MOI.supports(::Optimizer, ::MOI.VariablePrimal) = true
@@ -281,13 +305,21 @@ end
 MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = false
 
 MOI.supports(::Optimizer, a::MOI.DualStatus) = true
-MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.NO_SOLUTION
+#MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.NO_SOLUTION
 #MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.FEASIBLE_POINT
+function MOI.get(::Optimizer, attr::MOI.DualStatus)
+    return attr.result_index == 1 ? MOI.FEASIBLE_POINT : MOI.NO_SOLUTION
+end
+
+
 
 
 
 MOI.supports(::Optimizer, ::MOI.PrimalStatus) = true
-function MOI.get(opt::Optimizer, ::MOI.PrimalStatus)
+function MOI.get(opt::Optimizer, attr::MOI.PrimalStatus)
+    if attr.result_index != 1    #988 passed, 4 failed, 127 errored
+        return MOI.NO_SOLUTION
+    end
     !isnothing(opt.Results) || return MOI.NO_SOLUTION
     st = opt.Results[3]
     if st == 0
@@ -300,7 +332,11 @@ end
 MOI.get(opt::Optimizer, ::MOI.RawStatusString) = string(opt.Results[3])
 
 MOI.supports(::Optimizer, ::MOI.ConstraintDual) = false
+#= MOI.supports(::Optimizer, ::MOI.ConstraintDual) = true
+function MOI.get(opt::Optimizer, a::MOI.ConstraintDual, ci::MOI.ConstraintIndex)
 
+    return opt.Results[1][1]
+end =#
 
 
 
@@ -479,18 +515,22 @@ function MOI2QP(dest::Optimizer{T}, MP) where {T}
         V[term.variable_1.value, term.variable_2.value] += term.coefficient     #duplicate_terms
     end
     for i in 2:N
-        for j in 1:i
-            V[i, j] = V[j, i]
+        for j in 1:i-1
+            V[i, j] += V[j, i]
+            V[j, i] = V[i, j]   #make sure symmetric
         end
     end
+    #V = (V + V') / 2    #Duplicate off-diagonal terms
     #display(V)
 
     q = zeros(T, N)
     for term in f.affine_terms
         #q[term.variable.value] = 2 * term.coefficient
-        q[term.variable.value] = term.coefficient
+        q[term.variable.value] += term.coefficient  ##duplicate_terms
     end
     #display(q)
+
+    dest.f0 = f.constant
 
     if dest.Sense == MOI.MAX_SENSE
         V = -V

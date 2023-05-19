@@ -212,14 +212,14 @@ function test_runtests()
             "test_model_LowerBoundAlreadySet",
             "test_model_UpperBoundAlreadySet",
             "test_model_supports_constraint_ScalarAffineFunction_EqualTo",
-            "test_constraint_ScalarAffineFunction_EqualTo",
+            #= "test_constraint_ScalarAffineFunction_EqualTo",
             "test_modification_const_scalar_objective",
             "test_modification_const_vectoraffine_zeros",
             "test_objective_ObjectiveFunction",
             "test_objective_qp_ObjectiveFunction_edge_cases",
             "test_quadratic_nonhomogeneous",
             "test_solve_TerminationStatus_DUAL_INFEASIBLE",
-            "test_solve_result_index",
+            "test_solve_result_index",  =#
         ]
     )
     return
