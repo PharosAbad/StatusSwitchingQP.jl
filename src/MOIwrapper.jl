@@ -57,7 +57,7 @@ MOI.get(opt::Optimizer, ::MOI.SolverName) = "StatusSwitchingQP"
 MOI.get(opt::Optimizer, ::MOI.SolverVersion) = TOML.parsefile(joinpath(pkgdir(StatusSwitchingQP), "Project.toml"))["version"]
 MOI.get(opt::Optimizer, ::MOI.RawSolver) = StatusSwitchingQP.solveQP
 MOI.get(opt::Optimizer, ::MOI.ResultCount) = Int(!isnothing(opt.Results))
-MOI.get(opt::Optimizer, ::MOI.SolveTimeSec) = 0.1
+MOI.get(opt::Optimizer, ::MOI.SolveTimeSec) = 0.1  # TODO: what is this?
 
 
 MOI.supports(::Optimizer, ::MOI.Silent) = true
@@ -117,7 +117,7 @@ end
 
 
 function MOI.supports_constraint(
-    ::Optimizer,
+    ::Optimizer{T},
     ::Type{MOI.ScalarAffineFunction{T}},
     #::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
     ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T}}}) where {T}
@@ -125,7 +125,7 @@ function MOI.supports_constraint(
 end
 
 function MOI.supports_constraint(
-    ::Optimizer,
+    ::Optimizer{T},
     ::Type{MOI.VariableIndex},
     #::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.EqualTo{T},MOI.Interval{T}}}) where {T}
     ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.Interval{T}}}) where {T}
@@ -229,7 +229,6 @@ function MOI.optimize!(opt::Optimizer{T}) where {T}
 end
 
 
-MOI.supports(::Optimizer, ::MOI.TerminationStatus) = true
 function MOI.get(opt::Optimizer, ::MOI.TerminationStatus)
     !isnothing(opt.Results) || return MOI.OPTIMIZE_NOT_CALLED
     # > 0 if successful (=iter_count); = 0 if infeasibility detected; < 0 fail (=-1 if numerical error, =-maxIter if not converged)
@@ -268,26 +267,19 @@ function MOI.get(opt::Optimizer, a::MOI.ObjectiveValue)
 end
 
 
-MOI.supports(::Optimizer, ::MOI.VariablePrimal) = true
 function MOI.get(opt::Optimizer, a::MOI.VariablePrimal, vi::MOI.VariableIndex)
     MOI.check_result_index_bounds(opt, a)
     return opt.Results[1][vi.value]
 end
-function MOI.get(opt::Optimizer, a::MOI.VariablePrimal)
-    MOI.check_result_index_bounds(opt, a)
-    return opt.Results[1]
-end
 
 MOI.supports(::Optimizer, ::MOI.TimeLimitSec) = false
 
-MOI.supports(::Optimizer, a::MOI.DualStatus) = true
 MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.NO_SOLUTION
-#MOI.get(::Optimizer, ::MOI.DualStatus) = MOI.FEASIBLE_POINT
 
-
-
-MOI.supports(::Optimizer, ::MOI.PrimalStatus) = true
-function MOI.get(opt::Optimizer, ::MOI.PrimalStatus)
+function MOI.get(opt::Optimizer, attr::MOI.PrimalStatus)
+    if attr.result_index != 1
+        return MOI.NO_SOLUTION
+    end
     !isnothing(opt.Results) || return MOI.NO_SOLUTION
     st = opt.Results[3]
     if st == 0
@@ -298,11 +290,6 @@ function MOI.get(opt::Optimizer, ::MOI.PrimalStatus)
 end
 
 MOI.get(opt::Optimizer, ::MOI.RawStatusString) = string(opt.Results[3])
-
-MOI.supports(::Optimizer, ::MOI.ConstraintDual) = false
-
-
-
 
 function getConstraints(P, N, T)
     #function getConstraints(P, N, tol, T)
