@@ -67,11 +67,26 @@ MOI.set(opt::Optimizer, ::MOI.Silent, v::Bool) = (opt.Silent = v)
 
 
 
-#=
-function Base.show(io::IO, model::Optimizer)
-    return print(io, "NewSolver with the pointer $(model.ptr)")
+
+function Base.show(io::IO, opt::Optimizer)
+    myname = MOI.get(opt, MOI.SolverName())
+    if isnothing(opt.Results)
+        print(io, "$(myname) - Optimizer: Empty")
+    else
+        println(io, "$(myname) - Optimizer")
+        #println(io, " : Has results: $(!isnothing(opt.Results))")
+        println(io, " : Has results: true")
+        println(io, " : Objective constant: $(opt.f0)")
+        println(io, " : Sense: $(opt.Sense)")
+
+        println(io, " : Problem status: $(MOI.get(opt,MOI.RawStatusString()))")
+        value = round(MOI.get(opt, MOI.ObjectiveValue()), digits=3)
+        println(io, " : Optimal objective: $(value)")
+        solvetime = round.(opt.solTime * 1000, digits=2)
+        println(io, " : Solve time: $(solvetime)ms")
+    end
 end
-=#
+
 
 
 
