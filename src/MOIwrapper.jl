@@ -71,7 +71,7 @@ MOI.set(opt::Optimizer, ::MOI.Silent, v::Bool) = (opt.Silent = v)
 function Base.show(io::IO, opt::Optimizer)
     myname = MOI.get(opt, MOI.SolverName())
     if isnothing(opt.Results)
-        print(io, "$(myname) - Optimizer: Empty")
+        println(io, "$(myname) - Optimizer: Empty")
     else
         println(io, "$(myname) - Optimizer")
         #println(io, " : Has results: $(!isnothing(opt.Results))")
