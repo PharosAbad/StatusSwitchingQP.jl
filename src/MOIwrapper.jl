@@ -132,16 +132,29 @@ function MOI.optimize!(opt::Optimizer{T}) where {T}
     P = opt.Problem
     if P.mc == -20  # pre-solve "bad" models
         N = P.N
-        if P.M > 0
+        if P.M > 0  #to do: QP, and LP, and maybe f==0
+            #= if typeof(P) <: QP
+            else    #LP
+            end =#
+
+            #println(P) #all test data: LP and N=M
             x = P.A \ P.b
             opt.Results = (x, fill(DN, N), 1)
         else  #no constraints
             if typeof(P) <: QP
-                o = norm(P.V, Inf) == 0 && norm(P.q, Inf) == 0
+                #o = norm(P.V, Inf) == 0 && norm(P.q, Inf) == 0
+                x = P.V \ P.q
+                if (opt.Sense == MOI.MIN_SENSE && det(P.V) > 0) || (opt.Sense == MOI.MAX_SENSE && det(P.V) < 0)
+                    st = 1
+                else
+                    st = 3
+                end
             else
-                o = norm(P.c, Inf) == 0
+                #o = norm(P.c, Inf) == 0
+                x = zeros(T, N)
+                st = norm(P.c, Inf) == 0 ? 1 : 3     # 1 for no objective function (f==0)
             end
-            opt.Results = (zeros(T, N), fill(DN, N), o ? 1 : 3)     # 1 for no objective function
+            opt.Results = (x, fill(DN, N), st)
         end
         return nothing
     end
