@@ -301,7 +301,7 @@ kwargs are from the fields of Settings{T<:AbstractFloat} for Float64 and BigFloa
 
             maxIter::Int    #7777
             tol::T          #2^-26 ≈ 1.5e-8  general scalar
-            tolG::T         #2^-27 for Greeks (beta and gamma)
+            tolG::T         #2^-33 ≈ 1.2e-10 for Greeks (beta and gamma)
             pivot::Symbol   #pivot for purging redundant rows (Gauss-Jordan elimination) {:column, :row}
             rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
 
