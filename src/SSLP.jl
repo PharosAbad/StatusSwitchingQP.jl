@@ -441,10 +441,10 @@ function initLP(Q::LP{T}, settings) where {T}
     #convert free variable: -∞ < x < +∞
     fu = u .== Inf   #no upper bound
     fd = d .== -Inf   #no lower bound
-    fv = fu .&& fd  #free variable
+    fv = fu .& fd  #free variable
     iv = findall(fv)
     n = length(iv)
-    id = findall(fd .&& .!fv)   # (-∞, u]
+    id = findall(fd .& .!fv)   # (-∞, u]
     #display(id)
 
     #add slack variables for Gz<=g , and 2nd part of free variables
@@ -603,9 +603,9 @@ function auxLP(Q::LP{T}, settings) where {T}
 
     fu = u .== Inf   #no upper bound
     fd = d .== -Inf   #no lower bound
-    fv = fu .&& fd  #free variable
+    fv = fu .& fd  #free variable
     iv = findall(fv)
-    id = findall(fd .&& .!fv)   # (-∞, u]
+    id = findall(fd .& .!fv)   # (-∞, u]
 
     #add slack variables for Gz<=g, and artificial variables for Ax=b, and s for aux
     M0 = M + J
