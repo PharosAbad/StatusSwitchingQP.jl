@@ -456,7 +456,7 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     iv = findall(fv)
     n = length(iv)
     #id = findall(fd .&& (.!fv))   # (-∞, u]
-    id = findall(fd .& fv)   # (-∞, u]  #ver 1.6
+    id = findall(fd .& (.!fv))   # (-∞, u]  #ver 1.6
 
     #add slack variables for Gz<=g , and 2nd part of free variables
     M0 = M + J

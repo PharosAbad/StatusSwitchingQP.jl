@@ -605,7 +605,7 @@ function auxLP(Q::LP{T}, settings) where {T}
     fd = d .== -Inf   #no lower bound
     fv = fu .& fd  #free variable
     iv = findall(fv)
-    id = findall(fd .& .!fv)   # (-∞, u]
+    id = findall(fd .& (.!fv))   # (-∞, u]
 
     #add slack variables for Gz<=g, and artificial variables for Ax=b, and s for aux
     M0 = M + J

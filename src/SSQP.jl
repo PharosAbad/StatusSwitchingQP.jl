@@ -517,10 +517,10 @@ function initQP(Q::QP{T}, settingsLP) where {T}
     #convert free variable: -∞ < x < +∞
     fu = u .== Inf   #no upper bound
     fd = d .== -Inf   #no lower bound
-    fv = fu .& fd  #free variable
+    fv = fu.(&&)fd  #free variable
     iv = findall(fv)
     n = length(iv)
-    id = findall(fd .& .!fv)   # (-∞, u]
+    id = findall(fd .& (.!fv))   # (-∞, u]
 
     #add slack variables for Gz<=g , and 2nd part of free variables
     M0 = M + J
