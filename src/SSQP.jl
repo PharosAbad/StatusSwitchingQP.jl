@@ -235,10 +235,25 @@ end
 
 
 function solveQP(Q::QP{T}, S, x0; settings=Settings{T}()) where {T}
-    (; V, A, G, q, b, g, d, u, N, M, J) = Q
+    #(; V, A, G, q, b, g, d, u, N, M, J) = Q
+    V = Q.V
+    A = Q.A
+    G = Q.G
+    q = Q.q
+    b = Q.b
+    g = Q.g
+    d = Q.d
+    u = Q.u
+    N = Q.N
+    M = Q.M
+    J = Q.J
+
     #(; maxIter, tol, tolN, tolG) = settings
     #(; maxIter, tol, tolG, pivot) = settings
-    (; maxIter, tol, tolG) = settings
+    #(; maxIter, tol, tolG) = settings
+    maxIter = settings.maxIter
+    tol = settings.tol
+    tolG = settings.tolG
 
     #refineRows = pivot == :column ? getRowsGJ : getRowsGJr
     #refineRows = getRowsGJr
@@ -406,8 +421,20 @@ end
 performing Phase-I Simplex, do not handle free variables such that -∞ < x < +∞. and d should be finite. OK for EfficientFrontier
 """
 function initSSQP(Q::QP{T}, settingsLP) where {T}
-    (; A, G, b, g, d, u, N, M, J) = Q
-    (; tol, rule) = settingsLP
+    #(; A, G, b, g, d, u, N, M, J) = Q
+    A = Q.A
+    G = Q.G
+    b = Q.b
+    g = Q.g
+    d = Q.d
+    u = Q.u
+    N = Q.N
+    M = Q.M
+    J = Q.J
+
+    #(; tol, rule) = settingsLP
+    tol = settingsLP.tol
+    rule = settingsLP.rule
 
     solveLP = cDantzigLP
     if rule == :maxImprovement
@@ -468,8 +495,19 @@ allowing free variables such that -∞ < z < +∞
 """
 function initQP(Q::QP{T}, settingsLP) where {T}
     #An initial feasible point by performing Phase-I Simplex on the polyhedron
-    (; A, G, b, g, d, u, N, M, J) = Q
-    (; tol, rule) = settingsLP
+    #(; A, G, b, g, d, u, N, M, J) = Q
+    A = Q.A
+    G = Q.G
+    b = Q.b
+    g = Q.g
+    d = Q.d
+    u = Q.u
+    N = Q.N
+    M = Q.M
+    J = Q.J
+    #(; tol, rule) = settingsLP
+    tol = settingsLP.tol
+    rule = settingsLP.rule
 
     solveLP = cDantzigLP
     if rule == :maxImprovement

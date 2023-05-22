@@ -186,8 +186,19 @@ See also [`Status`](@ref), [`LP`](@ref), [`Settings`](@ref)
 
 """
 function solveLP(Q::LP{T}; settings=Settings{T}()) where {T}
-    (; c, A, b, G, g, d, u, M, J, mc) = Q
-    if mc <= 0
+    #(; c, A, b, G, g, d, u, N, M, J) = Q
+    c = Q.c
+    A = Q.A
+    b = Q.b
+    G = Q.G
+    g = Q.g
+    d = Q.d
+    u = Q.u
+    N = Q.N
+    M = Q.M
+    J = Q.J
+
+    if Q.mc <= 0
         return zeros(T, N), fill(DN, N), -1
     end
 
@@ -206,7 +217,14 @@ function solveLP(Q::LP{T}; settings=Settings{T}()) where {T}
 end
 
 function solveLP(Q::LP{T}, S, x0; settings=Settings{T}()) where {T}
-    (; c, A, b, G, g, d, u) = Q
+    #(; c, A, b, G, g, d, u) = Q
+    c = Q.c
+    A = Q.A
+    b = Q.b
+    G = Q.G
+    g = Q.g
+    d = Q.d
+    u = Q.u
 
     status, x = solveLP(c, A, b, G, g, d, u, S, x0; settings=settings)
     return x, S, status  #status:  1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded ; -1 in process
@@ -215,7 +233,11 @@ end
 function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) where {T}
     #S is updated
 
-    (; maxIter, tol, tolG, pivot) = settings
+    #(; maxIter, tol, tolG, pivot) = settings
+    maxIter = settings.maxIter
+    tol = settings.tol
+    tolG = settings.tolG
+    pivot = settings.pivot
 
     M = length(b)
     J = length(g)
@@ -402,7 +424,17 @@ end
 function initLP(Q::LP{T}, settings) where {T}
     #An initial feasible point by performing Phase-I Simplex on the polyhedron
     #(; c, A, b, G, g, d, u, N, M, J) = Q
-    (; A, b, G, g, d, u, N, M, J) = Q
+    #(; A, b, G, g, d, u, N, M, J) = Q
+    A = Q.A
+    b = Q.b
+    G = Q.G
+    g = Q.g
+    d = Q.d
+    u = Q.u
+    N = Q.N
+    M = Q.M
+    J = Q.J
+
     #(; maxIter, tol, tolN) = settings
     tol = settings.tol
 
@@ -506,7 +538,13 @@ end
 
 #simple bound only
 function boxLP(Q::LP{T}; settings=Settings{T}()) where {T}
-    (; c, d, u, N, M, J) = Q
+    #(; c, d, u, N, M, J) = Q
+    c = Q.c
+    d = Q.d
+    u = Q.u
+    N = Q.N
+    M = Q.M
+    J = Q.J
     tol = settings.tol
 
     M + J == 0 || error("Not a box LP (only simple bound)")
@@ -551,7 +589,16 @@ end
 
 function auxLP(Q::LP{T}, settings) where {T}
     #An initial feasible point by performing Phase-I Simplex on the polyhedron
-    (; A, b, G, g, d, u, N, M, J) = Q
+    #(; A, b, G, g, d, u, N, M, J) = Q
+    A = Q.A
+    b = Q.b
+    G = Q.G
+    g = Q.g
+    d = Q.d
+    u = Q.u
+    N = Q.N
+    M = Q.M
+    J = Q.J
     tol = settings.tol
 
     fu = u .== Inf   #no upper bound

@@ -371,22 +371,22 @@ end
 
 
 function LP2MOI(P::LP{T}) where {T}
-    (; c, A, b, G, g, d, u, N, M, J) = P
+    #(; c, A, b, G, g, d, u, N, M, J) = P
 
     #= if VERSION ≥ v"1.7.0"
         (; c, A, b, G, g, d, u, N, M, J) = P
-    else
-        c = P.c
-        A = P.A
-        b = P.b
-        G = P.G
-        g = P.g
-        d = P.d
-        u = P.u
-        N = P.N
-        M = P.M
-        J = P.J
-    end =#
+    else    =#
+    c = P.c
+    A = P.A
+    b = P.b
+    G = P.G
+    g = P.g
+    d = P.d
+    u = P.u
+    N = P.N
+    M = P.M
+    J = P.J
+    # end
 
     H = MOIU.Model{T}()
     x = MOI.add_variables(H, N)
@@ -452,10 +452,10 @@ end
 
 
 function QP2MOI(P::QP{T}) where {T}
-    (; V, A, G, q, b, g, d, u, N, M, J) = P
+    #(; V, A, G, q, b, g, d, u, N, M, J) = P
     #= if VERSION ≥ v"1.7.0"
         (; V, A, G, q, b, g, d, u, N, M, J) = P
-    else
+    else    =#
         V = P.V
         A = P.A
         G = P.G
@@ -467,7 +467,7 @@ function QP2MOI(P::QP{T}) where {T}
         N = P.N
         M = P.M
         J = P.J
-    end =#
+    #end
 
     H = MOIU.Model{T}()
     x = MOI.add_variables(H, N)

@@ -206,7 +206,7 @@ Default values: q = 0, u = +∞, d = 0, G = [], g = [], A = ones(1,N), b = [1], 
 ```
 
 `QP(P::QP, q, L)`  :  replace the q'z term in the objective function by `-L * q`
-`QP(P::QP, mu, q)` :  add q'z=mu to the last row of Az=b, and remove q'z in the objective function
+`QP(P::QP, mu, c)` :  add c'z=mu to the last row of Az=b, and remove q'z in the objective function
 
 See also [`LP`](@ref), [`Settings`](@ref), [`solveQP`](@ref)
 
@@ -302,27 +302,57 @@ end
 
 function QP(P::QP{T}, q, L::T=0.0) where {T}
     #(; V, A, G, q, b, g, d, u, N, M, J) = P
-    (; V, A, G, b, g, d, u, N, M, J, mc) = P
+    #(; V, A, G, b, g, d, u, N, M, J, mc) = P
+    V = P.V
+    A = P.A
+    G = P.G
+    b = P.b
+    g = P.g
+    d = P.d
+    u = P.u
+    N = P.N
+    M = P.M
+    J = P.J
     #q = -L * q
     #return QP(V, A, G, q, b, g, d, u, N, M, J)
-    return QP(V, A, G, -L * q, b, g, d, u, N, M, J, mc)
+    return QP(V, A, G, -L * q, b, g, d, u, N, M, J, P.mc)
 end
 
 function QP(P::QP{T}, mu::T, q::Vector{T}) where {T}
     #(; V, A, G, q, b, g, d, u, N, M, J) = P
-    (; V, A, G, b, g, d, u, N, M, J, mc) = P
+    #(; V, A, G, b, g, d, u, N, M, J, mc) = P
+    V = P.V
+    A = P.A
+    G = P.G
+    b = P.b
+    g = P.g
+    d = P.d
+    u = P.u
+    N = P.N
+    M = P.M
+    J = P.J
     #q = zeros(T, N)
     M += 1
     Am = [A; q']
     bm = [b; mu]
-    return QP(V, Am, G, zeros(T, N), bm, g, d, u, N, M, J, mc)
+    return QP(V, Am, G, zeros(T, N), bm, g, d, u, N, M, J, P.mc)
 end
 
 function QP(P::LP{T}) where {T}
 
-    (; c, A, b, G, g, d, u, N, M, J, mc) = P
+    #(; c, A, b, G, g, d, u, N, M, J, mc) = P
+    c = P.c
+    A = P.A
+    b = P.b
+    G = P.G
+    g = P.g
+    d = P.d
+    u = P.u
+    N = P.N
+    M = P.M
+    J = P.J
     v = abs.(c) .+ 0.5
-    return QP(diagm(v), A, G, zeros(T, length(c)), b, g, d, u, N, M, J, mc)
+    return QP(diagm(v), A, G, zeros(T, length(c)), b, g, d, u, N, M, J, P.mc)
 end
 
 """

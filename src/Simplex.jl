@@ -424,11 +424,25 @@ See also [`Status`](@ref), [`LP`](@ref), [`Settings`](@ref), [`cDantzigLP`](@ref
 function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
 
     #An initial feasible point by performing Phase-I Simplex on the polyhedron
-    (; c, A, b, G, g, d, u, N, M, J, mc) = P
+    #(; c, A, b, G, g, d, u, N, M, J, mc) = P
+    c = P.c
+    A = P.A
+    b = P.b
+    G = P.G
+    g = P.g
+    d = P.d
+    u = P.u
+    N = P.N
+    M = P.M
+    J = P.J
+    mc = P.mc
+
     if mc <= 0
         return zeros(T, N), fill(DN, N), -1
     end
-    (; tol, rule) = settings
+    #(; tol, rule) = settings
+    tol = settings.tol
+    rule = settings.rule
 
     solveLP = cDantzigLP
     if rule == :maxImprovement
