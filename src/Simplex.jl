@@ -450,9 +450,9 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     end
 
     #convert free variable: -∞ < x < +∞
-    fu = u .== Inf   #no upper bound
-    fd = d .== -Inf   #no lower bound
-    fv = fu .&& fd  #free variable
+    fu = (u .== Inf)   #no upper bound
+    fd = (d .== -Inf)   #no lower bound
+    fv = (fu .&& fd)  #free variable
     iv = findall(fv)
     n = length(iv)
     id = findall(fd .&& (.!fv))   # (-∞, u]
