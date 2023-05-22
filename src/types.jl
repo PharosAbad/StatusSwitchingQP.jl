@@ -47,9 +47,9 @@ end
 #=
 mc
 1	    OK
-0	    infeasible	"infeasible: Ax=b"
--1 	    numerical errors
--10	    "redundant rows in Ax=b"
+    0	    infeasible	"infeasible: Ax=b"
+    -1 	    numerical errors
+    -10	    "redundant rows in Ax=b"
 -20	    "no inequalities and bounds"
 -30	    "downside bound == upper bound detected"
 -70	    "variance matrix is not positive-semidefinite"
@@ -112,19 +112,14 @@ function LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}; N=length(c),
     N == size(u, 1) || throw(DimensionMismatch("incompatible dimension: u"))
 
     #check feasibility and redundancy of Ax=b
-    rb = rank([A vec(b)])
-    #@assert rb == rank(A) "infeasible: Ax=b"
-    if !(rb == rank(A))
-        mc = 0
-        @warn "infeasible: Ax=b"
-    end
+    #rb = rank([A vec(b)])
 
     #@assert M == length(getRows(A, tolN)) "redundant rows in Ax=b"   #full row rank
     #@assert M == rb "redundant rows in Ax=b"       #full row rank
-    if !(M == rb)
-        mc = -10
+    #= if !(M == rb)
+        #mc = -10
         @warn "redundant rows in Ax=b"
-    end
+    end =#
 
     #@assert !any(d .== u) "downside bound == upper bound detected"
     if any(d .== u)
@@ -138,6 +133,42 @@ function LP(c::Vector{T}, A::Matrix{T}, b::Vector{T}; N=length(c),
         mc = -20
         @warn "no inequalities and bounds"
     end
+    #order: check mc=-20 before mc=0
+
+    #= if J > 0
+        #= ig = g .== Inf
+        ng = length(findall(ig))
+        if ng > 0
+            @warn "purging redundant rows in Gx≤g, where g=+∞"
+            cg = .!ig
+            G = G[cg]
+            g = g[cg]
+            J -= ng
+        end =#
+        ig = g .== -Inf
+        ng = length(findall(ig))
+        if ng > 0
+            @warn "infeasible: Gx≤-∞"
+            mc = 0
+        end
+    end =#
+
+    #= if J > 0 && sum(g .== -Inf) > 0
+        @warn "infeasible: Gx≤-∞"
+        mc = 0
+    end =#
+    #=
+    no need to check g
+    =#
+
+
+    #@assert rb == rank(A) "infeasible: Ax=b"
+    #= if !(rb == rank(A))
+        mc = 0
+        @warn "infeasible: Ax=b"
+    end =#
+    # mc = 0  should not be overwritten
+
 
     iu = u .< d
     if sum(iu) > 0
@@ -224,6 +255,7 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
     N == size(d, 1) || throw(DimensionMismatch("incompatible dimension: d"))
     N == size(u, 1) || throw(DimensionMismatch("incompatible dimension: u"))
 
+    #=
     #check feasibility and redundancy of Ax=b
     rb = rank([A vec(b)])
     #@assert rb == rank(A) "infeasible: Ax=b"
@@ -237,6 +269,7 @@ function QP(V::Matrix{T}; N=size(V, 1), #N=convert(Int32, size(V, 1)),
         mc = -10
         @warn "redundant rows in Ax=b"
     end
+    =#
 
     #@assert !any(d .== u) "downside bound == upper bound detected"
     if any(d .== u)
@@ -310,7 +343,7 @@ struct Settings{T<:AbstractFloat}
     maxIter::Int    #7777
     tol::T          #2^-26
     #tolN::T         #2^-26
-    tolG::T         #2^-27 for Greeks (beta and gamma)
+    tolG::T         #2^-33 for Greeks (beta and gamma)
     pivot::Symbol    #pivoting for purging redundant rows {:column, :row}
     rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
 end
