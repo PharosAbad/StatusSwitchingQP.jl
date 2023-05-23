@@ -504,11 +504,55 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     #Phase II    --- --- phase 2 --- ---
 
     q = x[B]
-    ia = findall(B .> N0)
-    m = length(ia)
     c0 = [c; zeros(T, J + n)]
     c0[id] .= -c0[id]
     c0[nj+1:end] .= -c0[iv]
+
+    ia = findall(B .> N0)
+    m = length(ia)
+
+    while m > 0
+        F = trues(N0)
+        #F[findall(B .<= N0)] .= false
+        F[B[B.<=N0]] .= false
+        Y = invB * A0[:, F]
+        #l = B[ia[m]] - N0
+        l = B[end] - N0
+        #r = findfirst(abs.(Y[l, :]) .>= tol)
+        #if isnothing(r) #all 0, purge redundant row
+        if rank(Y) < M0     # purge redundant row
+            #if norm(Y[l, :], Inf) < tol
+            ir = trues(M0)
+            ir[l] = false
+            M0 -= 1
+            A0 = A0[ir, :]
+            b0 = b0[ir]
+            A1 = A1[ir, :]
+            B = B[1:end-1]
+            invB = inv(lu(A1[:, B]))
+            q = q[1:end-1]
+        else    #AI go out, replace by x[k]
+            r = findfirst(abs.(Y[l, :]) .>= tol)
+            k = findall(F)[r]
+            B[end] = k
+            ib = sortperm(B)
+            B = B[ib]
+            invB = inv(lu(A1[:, B]))
+            q[end] = x[k]
+            q = q[ib]
+            S[k] = IN
+        end
+        ia = findall(B .> N0)
+        m = length(ia)
+    end
+
+    S = S[1:N0]
+    if !min
+        c0 = -c0
+    end
+    iH, x0, invB = solveLP(c0, A0, b0, d0, u0, B, S; invB=invB, q=q, tol=tol)
+
+    #=
     if m == 0
         S = S[1:N0]
         if !min
@@ -534,6 +578,7 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
 
         iH, x0, invB = solveLP(c1, A1, b1, d1, u1, B, S; invB=invB, q=q, tol=tol)
     end
+    =#
 
 
     #variables: restore free, or flip back

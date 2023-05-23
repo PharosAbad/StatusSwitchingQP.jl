@@ -104,7 +104,7 @@ end
 function MOI.supports_constraint(
     ::Optimizer{T},
     ::Type{MOI.VariableIndex},
-    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.Interval{T}}}) where {T}     #MOI.Interval not native
+    ::Type{<:Union{MOI.LessThan{T},MOI.GreaterThan{T},MOI.Interval{T}}}) where {T}     #MOI.EqualTo excluded
     return true
 end
 
