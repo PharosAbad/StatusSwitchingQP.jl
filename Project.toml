@@ -1,7 +1,7 @@
 name = "StatusSwitchingQP"
 uuid = "73a7d86c-03e3-42fb-a0f5-70ef6cda08f4"
 authors = ["Pharos Abad"]
-version = "0.3.0"
+version = "0.3.1"
 
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
