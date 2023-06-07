@@ -370,6 +370,13 @@ function MOI2LP(dest::Optimizer{T}, MP) where {T}
 end
 
 
+#=
+function MOI2LP(src::MOI.ModelLike)
+    P = copy(src)
+end
+=#
+
+
 function LP2MOI(P::LP{T}) where {T}
     #(; c, A, b, G, g, d, u, N, M, J) = P
 
