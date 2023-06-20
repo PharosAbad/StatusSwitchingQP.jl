@@ -6,6 +6,50 @@ using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, QP, getRowsGJ, g
 #using StatusSwitchingQP.SSQP: solveQP
 export auxLP, solveLP
 
+function cAbdu(Q::LP{T}; tol=2^-26) where {T}
+    #convert Gx≤g to equalities by adding slack variables
+    #(; c, A, b, G, g, d, u, M, J) = P
+    c = Q.c
+    A = Q.A
+    b = Q.b
+    G = Q.G
+    g = Q.g
+    d = Q.d
+    u = Q.u
+    #N = Q.N
+    M = Q.M
+    J = Q.J
+
+    # #=
+    #purge redundancy in Ax=b
+    ir, L = getRowsGJr([A b], tol)
+    if length(ir) != L
+        #error("infeasible")
+        #return zeros(T, N), fill(DN, N), 0   #0 infeasible
+        return 0, c, A, b, d, u
+    end
+    if L != M
+        M = L
+        A = A[ir, :]
+        b = b[ir]
+    end
+
+    #g = g[1:2] # not change Q.g
+    #g .= G[:,1]    #will change Q.g
+    # =#
+
+    #add slack variables, convert to all equalities
+    A0 = [A zeros(T, M, J)
+        G Matrix{T}(I, J, J)]
+    b0 = [b; g]
+    d0 = [d; zeros(T, J)]
+    u0 = [u; fill(Inf, J)]
+    c0 = [c; zeros(T, J)]
+    return 1, c0, A0, b0, d0, u0
+
+end
+
+#=
 @inline function freeK!(S, U, D, c, N, tol)  #for K=0
     #modify: S
     S0 = copy(S)
@@ -30,7 +74,74 @@ export auxLP, solveLP
         return -1
     end
 end
+=#
+function freeK!(S, c, A, tol)  #for K=0
+    #modify: S
+    S0 = copy(S)
+    t = true   #hit optimal
+    p = A' * (A' \ c) - c   #A is full row rank, rank(A) = M > 0                # A = ones(0, 3)  c = [1.0, 2, 3]  => p = -c
+    @inbounds for k in eachindex(c)
+        #if (c[k] >= -tol && S[k] == UP) || (c[k] <= tol && S[k] == DN)
+        if (p[k] < -tol && S[k] == UP) || (p[k] > tol && S[k] == DN)
+            S[k] = IN
+            t = false
+        end
+    end
 
+    if t
+        return 1
+    else
+        ip = findall(S .== IN)
+        if length(ip) > 0 && norm(c[ip], Inf) <= tol  #all movable are optimal
+            S[ip] = S0[ip]  #restore the status
+            return 2    #infinitely many solutions
+        end
+        return -1
+    end
+end
+
+function aStep!(S, x, p, F, d::Vector{T}, u, tol) where {T}  #for K>0 (allow W = 0)
+    #modify: S, x
+    Lo = Vector{Event{T}}(undef, 0)
+
+    ik = findall(F)
+    @inbounds for k in eachindex(p)   #p: Kx1
+        t = p[k]
+        j = ik[k]
+        if t < -tol
+            push!(Lo, Event{T}(IN, DN, j, (d[j] - x[j]) / t))
+        elseif t > tol
+            push!(Lo, Event{T}(IN, UP, j, (u[j] - x[j]) / t))
+        end
+    end
+
+    nL = length(Lo)
+    if nL > 0
+        sort!(Lo, by=x -> x.L)
+        s = Lo[1].L
+    else
+        return 1    # p≠0, and no way to improve
+    end
+
+    if isinf(s)
+        return 3
+    end
+
+    @inbounds x[F] .+= s * p
+
+    @inbounds for i in 1:lastindex(Lo)
+        Lt = Lo[i]
+        if Lt.L - s > tol
+            break
+        end
+        k = Lt.id
+        To = Lt.To
+        S[k] = To
+        x[k] = To == DN ? d[k] : u[k]
+    end
+    return -1
+end
+#=
 @inline function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, N, J, tol) where {T}  #for K>0 (allow W = 0)
     #modify: S, x
     Lo = Vector{Event{T}}(undef, 0)
@@ -91,7 +202,9 @@ end
     end
     return -1
 end
+=#
 
+#=
 @inline function KKTchk!(S, F, B, U, hW, AB, Eg, c::Vector{T}, AE, GE, idAE, ra, N, M, JE, tolG) where {T}
 
     Li = Vector{Event{T}}(undef, 0)
@@ -158,15 +271,53 @@ end
     end
     return -1
 end
+=#
+function KKTchk!(S, B, h, AB, c::Vector{T}, tol) where {T}
+    Li = Vector{Event{T}}(undef, 0)
+    ib = findall(B)
+    nb = length(ib)
+    if nb > 0
+        #if length(ib) > 0
+        hB = c[B] - AB' * h
+        for k in eachindex(hB)
+            j = ib[k]
+            t = hB[k]
+            if S[j] == UP
+                if t > tol
+                    push!(Li, Event{T}(UP, IN, j, -t))
+                end
+            else
+                if t < -tol
+                    push!(Li, Event{T}(DN, IN, j, t))
+                end
+            end
+        end
+    end
+    nL = length(Li)
+    if nL > 0
+        #sort!(Li, by=x -> x.L, rev=true)
+        sort!(Li, by=x -> x.L)  #argmin
+        Lt = Li[1]
+        k = Lt.id
+        To = Lt.To
+        S[k] = To
+    else
+        if nb > 0 && any(abs.(hB) .< tol)  #when all IN, no hB
+            return 2
+        end
+        return 1    #hit optimal
+    end
+    return -1
+
+end
 
 
 """
 
         solveLP(Q::LP{T}; settings=Settings{T}())
-        solveLP(Q::LP{T}, S, x0; settings)
-        solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings)
+        solveLP(c::Vector{T}, A, d, u, S, x0; settings)
 
-solve the following LP defined by Q::LP. `solveLP(Q, S, x0)` when initial `S` and `x0` is given
+solve the following LP defined by Q::LP.
 
 ```math
 min   f=c′x
@@ -180,11 +331,85 @@ Outputs
     S               : Vector{Status}, (N+J)x1
     status          : 1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded; -1 numerical errors; -maxIter, not done
 
-solveLP(c, A, b, G, g, d, u, S, x0; settings) modifies `S`, only return `status, x`
+solveLP(c, A, d, u, S, x0; settings):  given initial `S` and `x0`, for
+
+```math
+min   f=c′x
+s.t.  Ax=b  ∈R^{M}
+      d≤x≤u ∈R^{N}
+```
+
 
 See also [`Status`](@ref), [`LP`](@ref), [`Settings`](@ref)
 
 """
+function solveLP(c::Vector{T}, A, d, u, S, x; settings=Settings{T}()) where {T}
+
+    maxIter = settings.maxIter
+    tol = settings.tol
+    tolG = settings.tolG
+
+    M = size(A, 1)
+    N = length(c)
+
+    if M == 0 #a box
+        xb, Sb, status = boxLP(c, d, u, N; tol=tol)
+        x .= xb
+        S .= Sb
+        return status
+    end
+
+
+    iter = 0
+    while true
+        iter += 1
+        if iter > maxIter
+            status = -maxIter
+            return status
+        end
+
+        F = (S .== IN) #free variable are always IN
+        K = sum(F)
+        #U = (S .== UP)
+        if K == 0
+            status = freeK!(S, c, A, tol)
+            if status >= 0
+                return status
+            else
+                continue
+            end
+        end
+
+        B = .!F
+        AE = @view A[:, F]
+        AB = @view A[:, B]
+        cF = @view c[F]
+
+        h = AE' \ cF   # When AE is square, lu is called, otherwise, qr     而且 AE 不满行秩 时 也能计算 2023-06-16 16:39:51
+        p = AE' * h - cF
+
+        #direction p ≠ 0
+        if norm(p, Inf) > tolG
+            #if norm(p, Inf) > tolG * ( abs( log2(cond(invC))) +1)  #when M>100, compute invC is a heavy burden and not stable  2023-04-29 22:32:18
+            status = aStep!(S, x, p, F, d, u, tol)
+            if status >= 0
+                return status   #, x
+            else
+                continue
+            end
+        end
+
+        #direction p = 0
+        status = KKTchk!(S, B, h, AB, c, tolG)
+        if status >= 0
+            if M < K
+                status = 2  #infinitely many solutions
+            end
+            return status   #, x
+        end
+    end
+end
+#=
 function solveLP(Q::LP{T}; settings=Settings{T}()) where {T}
     #(; c, A, b, G, g, d, u, N, M, J) = Q
     c = Q.c
@@ -215,7 +440,51 @@ function solveLP(Q::LP{T}; settings=Settings{T}()) where {T}
     status, x = solveLP(c, A, b, G, g, d, u, S, x0; settings=settings)
     return x, S, status  #status:  1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded ; -1 in process (numerical errors)
 end
+=#
 
+function solveLP(Q::LP{T}; settings=Settings{T}()) where {T}
+    #(; N, J) = Q
+    N = Q.N
+    J = Q.J
+
+    tol = settings.tol
+
+    if J == 0 && Q.M == 0 #a box
+        #return boxLP(Q.c, Q.d, Q.u, N; tol=tol)
+        return boxLP(Q; settings=settings)
+    end
+
+    status, c, A, b, d, u = cAbdu(Q; tol=tol)
+
+    #p = A' * (A' \ c) - c   #A is full row rank
+    #display([c p])
+
+    if status <= 0
+        return zeros(T, N), fill(DN, N), status
+    end
+    #t0 = time_ns()
+    #x, S, status = initSx(c, A, b, d, u; settings=settings)
+    x, S, status = initSx(A, b, d, u; settings=settings)
+    #t1 = time_ns()
+    #println("init ", (t1 - t0) / 1e9, " seconds")
+
+    if status > 0
+        #t0 = time_ns()
+        status = solveLP(c, A, d, u, S, x; settings=settings)
+        #t1 = time_ns()
+        #println("optm ", (t1 - t0) / 1e9, " seconds")
+    end
+
+    #display((S, x))
+
+    x = x[1:N]
+    for k in N+1:N+J
+        S[k] = S[k] == DN ? EO : OE
+    end
+    return x, S, status
+end
+
+#=
 function solveLP(Q::LP{T}, S, x0; settings=Settings{T}()) where {T}
     #(; c, A, b, G, g, d, u) = Q
     c = Q.c
@@ -344,7 +613,11 @@ function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) 
             AE = AE[ra, :]
             bE = bE[ra]
             AB = AB[ra, :]
-        end # =#
+        end  # =#
+        #=
+        W = M
+        ra = 1:M
+        =#
 
 
         # #=
@@ -419,7 +692,64 @@ function solveLP(c::Vector{T}, A, b, G, g, d, u, S, x0; settings=Settings{T}()) 
 
     end
 end
+=#
 
+function initSx(A, b, d, u::Vector{T}; settings=Settings{T}()) where {T}
+    #keep free variable: -∞ < x < +∞, keep (-∞, u]
+    tol = settings.tol
+    N = length(d)
+    M = length(b)
+
+    fu = (u .< Inf)   #finite upper bound
+    fd = (d .> -Inf)  #finite lower bound
+
+    x = copy(d)
+    S = fill(DN, N)
+
+    for n in findall(.!fd)
+        if fu[n]
+            x[n] = u[n]
+            S[n] = UP
+        else    #free variable
+            x[n] = 0
+            S[n] = IN   #we are not using simplex method, allow K>M
+        end
+    end
+
+
+    invB = Matrix{T}(I, M, M)
+    q = A * x
+    for j in 1:M
+        invB[j, j] = b[j] >= q[j] ? one(T) : -one(T)
+    end
+    q = abs.(q - b)
+    c1 = [zeros(T, N); fill(one(T), M)]   #灯塔的　模型　是　min
+    A1 = [A invB]
+    d1 = [d; zeros(T, M)]
+    u1 = [u; fill(Inf, M)]
+
+    #display(size(A1))
+    x0 = [x; q]
+    S0 = [S; fill(IN, M)]
+    status = solveLP(c1, A1, d1, u1, S0, x0; settings=settings)
+
+
+    x = x0[1:N]
+    S = S0[1:N]
+
+    #if status == -1 #numerical error in computation, such Ax=b  detroyed during the iterations
+    #return x, S, -1
+    if status < 0 #numerical error in computation, or max iter exceeded
+        return x, S, status
+    end
+
+    f = sum(x0[N+1:end])
+    if abs(f) > tol
+        #error("feasible region is empty")
+        return x, S, 0
+    end
+    return x, S, 1
+end
 
 function initLP(Q::LP{T}, settings) where {T}
     #An initial feasible point by performing Phase-I Simplex on the polyhedron

@@ -421,177 +421,6 @@ Outputs
 
 See also [`Status`](@ref), [`LP`](@ref), [`Settings`](@ref), [`cDantzigLP`](@ref), [`maxImprvLP`](@ref)
 """
-#=
-function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
-
-    #An initial feasible point by performing Phase-I Simplex on the polyhedron
-    #(; c, A, b, G, g, d, u, N, M, J, mc) = P
-    c = P.c
-    A = P.A
-    b = P.b
-    G = P.G
-    g = P.g
-    d = P.d
-    u = P.u
-    N = P.N
-    M = P.M
-    J = P.J
-    mc = P.mc
-
-    if mc <= 0
-        return zeros(T, N), fill(DN, N), -1
-    end
-    #(; tol, rule) = settings
-    tol = settings.tol
-    rule = settings.rule
-
-    solveLP = cDantzigLP
-    if rule == :maxImprovement
-        solveLP = maxImprvLP
-    end
-
-    #convert free variable: -∞ < x < +∞
-    fu = (u .== Inf)   #no upper bound
-    fd = (d .== -Inf)   #no lower bound
-    fv = (fu .& fd)  #free variable
-    iv = findall(fv)
-    n = length(iv)
-    #id = findall(fd .&& (.!fv))   # (-∞, u]
-    id = findall(fd .& (.!fv))   # (-∞, u]  #ver 1.6
-
-    #add slack variables for Gz<=g , and 2nd part of free variables
-    M0 = M + J
-    N0 = N + J + n
-    A0 = [A zeros(T, M, J) -A[:, iv]
-        G Matrix{T}(I, J, J) -G[:, iv]]
-    b0 = [b; g]
-    d0 = [d; zeros(T, J + n)]
-    u0 = [u; fill(Inf, J + n)]
-
-    #(-∞, +∞)  -> two copy of [0, +∞)
-    d0[iv] .= 0     #the 1st part of free variable
-    #u0[iv] .= Inf
-
-    #(-∞, u]  -> [-u, +∞)
-    d0[id] .= -u0[id]
-    u0[id] .= Inf
-    A0[:, id] .= -A0[:, id]
-
-    ra, la = getRowsGJr([A0 b0], tol)
-    if length(ra) != la
-        return zeros(T, N), fill(DN, N), 0   #0 infeasible
-    end
-    if la < M0
-        M0 = la
-        A0 = A0[ra, :]
-        b0 = b0[ra]
-    end
-
-    N1 = M0 + N0
-    S = fill(DN, N1)
-    B = collect(N0 .+ (1:M0))
-    S[B] .= IN
-
-    #add AV: Artificial Variable
-    invB = Matrix{T}(I, M0, M0)
-    q = A0 * d0
-    for j in 1:M0
-        invB[j, j] = b0[j] >= q[j] ? one(T) : -one(T)
-    end
-    q = abs.(q - b0)
-    c1 = [zeros(T, N0); fill(one(T), M0)]   #灯塔的　模型　是　min
-    A1 = [A0 invB]
-    b1 = b0
-    d1 = [d0; zeros(T, M0)]
-    u1 = [u0; fill(Inf, M0)]
-    nj = N + J
-
-    iH, x, invB = solveLP(c1, A1, b1, d1, u1, B, S; invB=invB, q=q, tol=tol)
-    f = sum(x[N0+1:end])
-    if abs(f) > tol
-        #error("feasible region is empty")
-        return x[1:N], S[1:nj], 0   #0 infeasible
-    end
-
-    #Phase II    --- --- phase 2 --- ---
-
-    q = x[B]
-    c0 = [c; zeros(T, J + n)]
-    c0[id] .= -c0[id]
-    c0[nj+1:end] .= -c0[iv]
-
-    ia = findall(B .> N0)
-    m = length(ia)
-    while m > 0
-        F = trues(N0)
-        F[B[B.<=N0]] .= false
-        iF = findall(F)
-        Y = invB * A0[:, iF]
-        l = B[end] - N0
-
-        #degenerated, AV go out, replace by x[k]
-        r = findfirst(abs.(Y[l, :]) .>= tol)
-        k = iF[r]
-        B[end] = k
-        ib = sortperm(B)
-        B = B[ib]
-        invB = inv(lu(A1[:, B]))
-        q[end] = x[k]
-        q = q[ib]
-        S[k] = IN
-
-        ia = findall(B .> N0)
-        m = length(ia)
-    end
-
-    S = S[1:N0]
-    if !min
-        c0 = -c0
-    end
-    iH, x0, invB = solveLP(c0, A0, b0, d0, u0, B, S; invB=invB, q=q, tol=tol)
-
-    #variables: restore free, or flip back
-    x = x0[1:N]
-    S = S[1:nj]
-
-    for k in N+1:nj    #inequalities
-        S[k] = S[k] == IN ? OE : EO
-    end
-
-    if n > 0    #free variable
-        x[iv] .-= x0[nj+1:nj+n]
-        S[iv] .= IN
-
-        #always infinitely many solutions when free variables
-        for k in 1:M0
-            if B[k] > nj
-                B[k] = iv[B[k]-nj]
-            end
-        end
-
-        F = trues(nj)
-        F[B] .= false
-        invB = inv(lu(A0[:, B]))
-        Y = invB * A0[:, findall(F)]
-        c0 = c0[1:nj]
-        h = c0[F] - Y' * c0[B]
-        ih = abs.(h) .< tol
-        iH = sum(ih) > 0 ? 2 : 1
-    end
-
-    m = length(id)
-    if m > 0   # flip u d
-        x[id] = -x[id]
-        for k in 1:m
-            if S[k] == DN
-                S[k] == UP
-            end
-        end
-    end
-    return x, S, iH
-end
-=#
-
 function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     #t0 = time()
     #An initial feasible point by performing Phase-I Simplex on the polyhedron
@@ -630,8 +459,9 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     id = findall(fd .& (.!fv))   # (-∞, u]  #ver 1.6
 
     #add slack variables for Gz<=g , and 2nd part of free variables
+    nj = N + J
     M0 = M + J
-    N0 = N + J + n
+    N0 = nj + n
     A0 = [A zeros(T, M, J) -A[:, iv]
         G Matrix{T}(I, J, J) -G[:, iv]]
     b0 = [b; g]
@@ -679,7 +509,6 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     b1 = b0
     d1 = [d0; zeros(T, M0)]
     u1 = [u0; fill(Inf, M0)]
-    nj = N + J
 
     iH, x, invB = solveLP(c1, A1, b1, d1, u1, B, S; invB=invB, q=q, tol=tol)
     f = sum(x[N0+1:end])

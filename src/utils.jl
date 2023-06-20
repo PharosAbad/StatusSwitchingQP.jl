@@ -1,5 +1,6 @@
 
-@inline function getRowsGJ(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}
+@inline function getRowsGJ(X::AbstractMatrix, tol=eps(norm(X, Inf)))
+#@inline function getRowsGJ(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}
     #Gauss-Jordan elimination, code form rref_with_pivots!
     A = copy(X)
     nr, nc = size(A)
@@ -44,7 +45,8 @@
 end
 
 #@inline function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row poviting
-function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row poviting
+#function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row poviting
+function getRowsGJr(X::AbstractMatrix, tol=eps(norm(X, Inf)))      # row poviting
     #Gauss-Jordan elimination, code form rref_with_pivots!
     A = copy(X)
     nr, nc = size(A)
@@ -84,7 +86,8 @@ function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row po
 end
 
 #see https://discourse.julialang.org/t/matrix-division-vs-compute-by-hand-why-such-big-difference/98288
-function getRows(A::Matrix{T}, tol=sqrt(eps(T))) where {T}
+function getRows(A::AbstractMatrix, tol=eps(norm(X, Inf)))
+#function getRows(A::Matrix{T}, tol=sqrt(eps(T))) where {T}
     #indicate the non-redundant rows, the begaining few rows can be zeros (redundant)
     M, N = size(A)
     if N == 0
