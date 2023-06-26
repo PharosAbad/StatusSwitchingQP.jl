@@ -49,33 +49,8 @@ function cAbdu(Q::LP{T}; tol=2^-26) where {T}
 
 end
 
-#=
-@inline function freeK!(S, U, D, c, N, tol)  #for K=0
-    #modify: S
-    S0 = copy(S)
-    t = true   #hit optimal
-    @inbounds for k in 1:N
-        if (c[k] >= -tol && U[k]) || (c[k] <= tol && D[k])
-            #if (c[k] > tol && U[k]) || (c[k] < -tol && D[k])
-            S[k] = IN
-            t = false
-        end
-    end
-    #return t ? 1 : -1
-    if t
-        return 1
-    else
-        ip = findall(S .== IN)
-        if length(ip) > 0 && norm(c[ip], Inf) <= tol  #all movable are optimal
-            S[ip] = S0[ip]  #restore the status
-            return 2    #infinitely many solutions
-        end
-        #let it handle by KKTchk, chance to improve, maybe some c[k]=0
-        return -1
-    end
-end
-=#
-function freeK!(S, c, A, tol)  #for K=0
+
+@inline function freeK!(S, c, A, tol)  #for K=0
     #modify: S
     S0 = copy(S)
     t = true   #hit optimal
@@ -100,7 +75,7 @@ function freeK!(S, c, A, tol)  #for K=0
     end
 end
 
-function aStep!(S, x, p, F, d::Vector{T}, u, tol) where {T}  #for K>0 (allow W = 0)
+@inline function aStep!(S, x, p, F, d::Vector{T}, u, tol) where {T}  #for K>0 (allow W = 0)
     #modify: S, x
     Lo = Vector{Event{T}}(undef, 0)
 
@@ -141,137 +116,8 @@ function aStep!(S, x, p, F, d::Vector{T}, u, tol) where {T}  #for K>0 (allow W =
     end
     return -1
 end
-#=
-@inline function aStep!(S, x, p, F, Og, c::Vector{T}, G, g, d, u, N, J, tol) where {T}  #for K>0 (allow W = 0)
-    #modify: S, x
-    Lo = Vector{Event{T}}(undef, 0)
-    s::T = 0.0
-
-    ik = findall(F)
-    @inbounds for k in eachindex(p)   #p: Kx1
-        t = p[k]
-        j = ik[k]
-        if t < -tol #&& fd[j]
-            push!(Lo, Event{T}(IN, DN, j, (d[j] - x[j]) / t))
-        elseif t > tol #&& fu[j]
-            push!(Lo, Event{T}(IN, UP, j, (u[j] - x[j]) / t))
-        end
-    end
-
-    @inbounds if J > 0
-        zo = g[Og] - G[Og, :] * x
-        po = G[Og, F] * p
-        ik = findall(Og)
-        for k in eachindex(zo)
-            j = ik[k]
-            t = po[k]
-            if t > tol
-                push!(Lo, Event{T}(OE, EO, j, zo[k] / t))
-            end
-        end
-    end
-
-    nL = length(Lo)
-    if nL > 0
-        sort!(Lo, by=x -> x.L)
-        s = Lo[1].L
-    else
-        return 1    # p≠0, and no way to improve
-    end
-
-    if isinf(s)
-        return 3
-    end
-
-    @inbounds x[F] .+= s * p
-
-    @inbounds for i in 1:lastindex(Lo)
-        Lt = Lo[i]
-        if Lt.L - s > tol
-            break
-        end
-        k = Lt.id
-        To = Lt.To
-        if To == EO
-            k += N
-        end
-        S[k] = To
-        if k <= N
-            x[k] = To == DN ? d[k] : u[k]
-        end
-    end
-    return -1
-end
-=#
 
 #=
-@inline function KKTchk!(S, F, B, U, hW, AB, Eg, c::Vector{T}, AE, GE, idAE, ra, N, M, JE, tolG) where {T}
-
-    Li = Vector{Event{T}}(undef, 0)
-    ib = findall(B)
-    nb = length(ib)
-    @inbounds if nb > 0
-        #if length(ib) > 0
-        hB = c[B] + AB' * hW
-        for k in eachindex(hB)
-            j = ib[k]
-            t = hB[k]
-            if U[j]
-                if t > tolG
-                    push!(Li, Event{T}(UP, IN, j, -t))
-                end
-            else
-                if t < -tolG
-                    push!(Li, Event{T}(DN, IN, j, t))
-                end
-            end
-        end
-    end
-
-    @inbounds if JE > 0
-        iE = zeros(Int, JE)
-        iR = findall(ra .> M)
-        iE[idAE[ra[iR]]] = iR
-        Lda = zeros(T, JE)
-        for j in 1:JE
-            k = iE[j]
-            if k == 0
-                x = AE' \ GE[j, F]
-                Lda[j] = hW' * x
-            else
-                Lda[j] = hW[k]
-            end
-        end
-
-        ie = findall(Eg)
-        for k in 1:JE
-            t = Lda[k]
-            if t < -tolG
-                push!(Li, Event{T}(EO, OE, ie[k], t))
-            end
-        end
-    end
-
-    nL = length(Li)
-    @inbounds if nL > 0
-        #sort!(Li, by=x -> x.L, rev=true)
-        sort!(Li, by=x -> x.L)  #argmin
-        Lt = Li[1]
-        k = Lt.id
-        To = Lt.To
-        if To == OE
-            k += N
-        end
-        S[k] = To
-    else
-        if nb > 0 && any(abs.(hB) .< tolG)  #when all IN, no hB
-            return 2
-        end
-        return 1    #hit optimal
-    end
-    return -1
-end
-=#
 function KKTchk!(S, B, h, AB, c::Vector{T}, tol) where {T}
     Li = Vector{Event{T}}(undef, 0)
     ib = findall(B)
@@ -309,6 +155,32 @@ function KKTchk!(S, B, h, AB, c::Vector{T}, tol) where {T}
     end
     return -1
 
+end
+=#
+
+@inline function KKTchk!(S, B, w, AB, c::Vector{T}, tol) where {T}
+    ib = findall(B)
+    nb = length(ib)
+
+    @inbounds if nb > 0
+        h = c[ib] - AB' * w
+        iu = S[ib] .== UP
+        h[iu] = -h[iu]  #η_{D}≥0,η_{U}≤0
+        ih = findall(h .< -tol)
+
+        if length(ih) > 0
+            #S[ib[ih[1]]] = IN  #cause singular matrix in later steps
+            k = argmin(h[ih])
+            S[ib[ih[k]]] = IN
+        else
+            if any(abs.(h) .< tol)  #when all IN, no hB
+                return 2
+            end
+            return 1    #hit optimal
+        end
+    end
+
+    return -1
 end
 
 
@@ -385,8 +257,8 @@ function solveLP(c::Vector{T}, A, d, u, S, x; settings=Settings{T}()) where {T}
         AB = @view A[:, B]
         cF = @view c[F]
 
-        h = AE' \ cF   # When AE is square, lu is called, otherwise, qr     而且 AE 不满行秩 时 也能计算 2023-06-16 16:39:51
-        p = AE' * h - cF
+        w = AE' \ cF   # When AE is square, lu is called, otherwise, qr     而且 AE 不满行秩 时 也能计算 2023-06-16 16:39:51
+        p = AE' * w - cF
 
         #direction p ≠ 0
         if norm(p, Inf) > tolG
@@ -400,7 +272,7 @@ function solveLP(c::Vector{T}, A, d, u, S, x; settings=Settings{T}()) where {T}
         end
 
         #direction p = 0
-        status = KKTchk!(S, B, h, AB, c, tolG)
+        status = KKTchk!(S, B, w, AB, c, tolG)
         if status >= 0
             if M < K
                 status = 2  #infinitely many solutions
@@ -706,7 +578,7 @@ function initSx(A, b, d, u::Vector{T}; settings=Settings{T}()) where {T}
     x = copy(d)
     S = fill(DN, N)
 
-    for n in findall(.!fd)
+    @inbounds for n in findall(.!fd)
         if fu[n]
             x[n] = u[n]
             S[n] = UP
@@ -719,7 +591,7 @@ function initSx(A, b, d, u::Vector{T}; settings=Settings{T}()) where {T}
 
     invB = Matrix{T}(I, M, M)
     q = A * x
-    for j in 1:M
+    @inbounds for j in 1:M
         invB[j, j] = b[j] >= q[j] ? one(T) : -one(T)
     end
     q = abs.(q - b)
@@ -819,11 +691,16 @@ function initLP(Q::LP{T}, settings) where {T}
 
     #to do: for SSLP, some q may not be IN
 
+    #=
     G1 = zeros(T, 0, N1)
     g1 = zeros(T, 0)
     x1 = copy(d1)
     x1[B] = q
     status, x0 = solveLP(c1, A1, b1, G1, g1, d1, u1, S, x1; settings=settings)
+    =#
+    x0 = copy(d1)
+    x0[B] = q
+    status = solveLP(c1, A1, d1, u1, S, x0; settings=settings)
 
     x = x0[1:N]
     S = S[1:N+J]
@@ -977,9 +854,11 @@ function auxLP(Q::LP{T}, settings) where {T}
 
     c0 = zeros(T, N0)
     c0[N+J+1:end] .= 1.0
-    G0 = zeros(T, 0, N0)
-    g0 = zeros(T, 0)
-    status, x0 = solveLP(c0, A0, b0, G0, g0, d0, u0, S, x; settings=settings)
+    #G0 = zeros(T, 0, N0)
+    #g0 = zeros(T, 0)
+    #status, x0 = solveLP(c0, A0, b0, G0, g0, d0, u0, S, x; settings=settings)
+    x = copy(x0)
+    status = solveLP(c0, A0, d0, u0, S, x; settings=settings)
 
     x = x0[1:N]
     S = S[1:N+J]

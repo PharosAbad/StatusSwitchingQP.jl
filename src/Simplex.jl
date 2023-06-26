@@ -410,7 +410,8 @@ end
 
 """
 
-        SimplexLP(P::LP{T}; settings=Settings{T}(), min=true)
+        SimplexLP(P::LP{T}; settings=Settings{T}(), min=true, Phase1=false)
+        SimplexLP(c, A, b, d, u; settings=Settings{T}(), min=true, Phase1=false)
 
 solve LP by simplex method. If `min=false`, we maximize the objective function
 
@@ -421,7 +422,7 @@ Outputs
 
 See also [`Status`](@ref), [`LP`](@ref), [`Settings`](@ref), [`cDantzigLP`](@ref), [`maxImprvLP`](@ref)
 """
-function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
+function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true, Phase1=false) where {T}
     #t0 = time()
     #An initial feasible point by performing Phase-I Simplex on the polyhedron
     #(; c, A, b, G, g, d, u, N, M, J, mc) = P
@@ -520,121 +521,65 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     #t1 = time()
     #display(t1 - t0)
 
-
-    #Phase II    --- --- phase 2 --- ---
-
-    q = x[B]
-    c0 = [c; zeros(T, J + n)]
-    c0[id] .= -c0[id]
-    c0[nj+1:end] .= -c0[iv]
-
-    ib = findall(B .<= N0)
-    m = length(ib)
-    if m < M0
-        iB = B[ib]
-        F = trues(N0)
-        F[iB] .= false
-        iF = findall(F)
-        ic = [iB; iF]
-        ra, la = getRowsGJr(copy(A0[:, ic]'), tol)
-        #ra, la = getRowsGJr(A0[:, ic]', tol)
-        B = sort(ic[ra])
-        iA = setdiff(B, iB)
-        invB = inv(lu(A0[:, B]))
-        S[iA] .= IN
-        q = x[B]
-    end
-
     #=
-    ia = findall(B .> N0)
-    m = length(ia)
-
-
-    while m > 0
-        F = trues(N0)
-        #F[findall(B .<= N0)] .= false
-        F[B[B.<=N0]] .= false
-        iF = findall(F)
-        #Y = invB * A0[:, iF]
-        #l = B[ia[m]] - N0
-        l = B[end] - N0
-        #r = findfirst(abs.(Y[l, :]) .>= tol)
-        #if isnothing(r) #all 0, purge redundant row
-        #if rank(Y) < M0     # purge redundant row
-        ir = trues(M0)
-        ir[l] = false
-
-        #= Ag = [A0[ir,iF]' A0[l,iF]]  #place it at last col
-        ig, rk = getRowsGJr(Ag, tol)    =#
-        #if norm(Y[l, :], Inf) < tol && getRowsGJr([A0[ir,iF] b0[ir]], tol)[2] == getRowsGJr([A0[:, iF] b0], tol)[2]
-
-        #if norm(Y[l, :], Inf) < tol || rk == length(ig)
-        #if norm(Y[l, :], Inf) < tol || rank(Y) == rank(Y[ir, :])
-        #if rank(Y) == rank(Y[ir, :])    # purge redundant row
-        #if rank(A0) == rank(A0[ir, :])    # purge redundant row
-        #=
-        m1 = rank(A0[ir, :])
-        if m0 == m1   # purge redundant row
-            M0 -= 1
-            A0 = A0[ir, :]
-            b0 = b0[ir]
-            A1 = A1[ir, :]
-            B = B[1:end-1]
-            invB = inv(lu(A1[:, B]))
-            q = q[1:end-1]
-        else    #degenerated, AV go out, replace by x[k]
-            =#
-
-            #=
-            r = findfirst(abs.(Y[l, :]) .>= tol)
-            #r = argmax(abs.(Y[l, :]))
-            k = iF[r]
-
-            =#
-            D = A1[:, B]
-            #= k = 0
-            for t in iF
-                D[:, end] = A0[:, t]
-                if rank(D) == m0
-                    k = t
-                    break
+    if Phase1
+        if n > 0    #free variable
+            x[iv] .-= x0[nj+1:nj+n]
+            S[iv] .= IN
+        end
+        m = length(id)
+        if m > 0   # flip u d
+            x[id] = -x[id]
+            for k in 1:m
+                if S[k] == DN
+                    S[k] == UP
                 end
             end
-            B[end] = k  =#
-
-            for k in iF
-                D[:, end] = A0[:, k]
-                if rank(D) == m0
-                    B[end] = k
-                    break
-                end
-            end
-            k = B[end]
-
-            ib = sortperm(B)
-            B = B[ib]
-            invB = inv(lu(A1[:, B]))
-            q[end] = x[k]
-            q = q[ib]
-            S[k] = IN
-        #end
-        ia = findall(B .> N0)
-        m = length(ia)
+        end
+        return x[1:N], S[1:nj], iH
     end
     =#
 
-    #display(time() - t1)
 
-    S = S[1:N0]
-    if !min
-        c0 = -c0
+    #Phase II    --- --- phase 2 --- ---
+    if Phase1
+        x = x[1:N]
+    else
+        q = x[B]
+        c0 = [c; zeros(T, J + n)]
+        c0[id] .= -c0[id]
+        c0[nj+1:end] .= -c0[iv]
+
+        #Artificial Variable in Basis, driving out AV
+        ib = findall(B .<= N0)
+        m = length(ib)
+        if m < M0
+            iB = B[ib]
+            F = trues(N0)
+            F[iB] .= false
+            iF = findall(F)
+            ic = [iB; iF]
+            #ra, la = getRowsGJr(copy(A0[:, ic]'), tol)
+            ra, la = getRowsGJr(A0[:, ic]', tol)
+            B = sort(ic[ra])
+            iA = setdiff(B, iB)
+            invB = inv(lu(A0[:, B]))
+            S[iA] .= IN
+            q = x[B]
+        end
+
+        #display(time() - t1)
+
+        S = S[1:N0]
+        if !min
+            c0 = -c0
+        end
+        iH, x0, invB = solveLP(c0, A0, b0, d0, u0, B, S; invB=invB, q=q, tol=tol)
+        x = x0[1:N]
     end
-    iH, x0, invB = solveLP(c0, A0, b0, d0, u0, B, S; invB=invB, q=q, tol=tol)
 
-    #variables: restore free, or flip back
-    x = x0[1:N]
     S = S[1:nj]
-
+    #variables: restore free, or flip back
     for k in N+1:nj    #inequalities
         S[k] = S[k] == IN ? OE : EO
     end
@@ -672,7 +617,155 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true) where {T}
     return x, S, iH
 end
 
+function SimplexLP(c::Vector{T}, A, b, d, u; settings=Settings{T}(), min=true, Phase1=false) where {T}
+    tol = settings.tol
+    rule = settings.rule
+    M, N = size(A)
 
+    solveLP = cDantzigLP
+    if rule == :maxImprovement
+        solveLP = maxImprvLP
+    end
+
+    #convert free variable: -∞ < x < +∞
+    fu = (u .== Inf)   #no upper bound
+    fd = (d .== -Inf)   #no lower bound
+    fv = (fu .& fd)  #free variable
+    iv = findall(fv)
+    n = length(iv)
+    id = findall(fd .& (.!fv))   # (-∞, u]  #ver 1.6
+
+    #add slack variables for Gz<=g , and 2nd part of free variables
+
+    M0 = M
+    N0 = N + n
+    A0 = [A -A[:, iv]]
+    b0 = b
+    d0 = [d; zeros(T, n)]
+    u0 = [u; fill(Inf, n)]
+
+    #(-∞, +∞)  -> two copy of [0, +∞)
+    d0[iv] .= 0     #the 1st part of free variable
+    #u0[iv] .= Inf
+
+    #(-∞, u]  -> [-u, +∞)
+    d0[id] .= -u0[id]
+    u0[id] .= Inf
+    A0[:, id] .= -A0[:, id]
+
+    #purge redundancy
+    m0 = rank(A0)
+    if m0 < M0
+        ra, la = getRowsGJr([A0 b0], tol)
+        if length(ra) != la
+            return zeros(T, N), fill(DN, N), 0   #0 infeasible
+        end
+        if m0 != la
+            return zeros(T, N), fill(DN, N), -1   # -1 numerical errors
+        end
+        M0 = m0
+        A0 = A0[ra, :]
+        b0 = b0[ra]
+    end
+
+
+    N1 = M0 + N0
+    S = fill(DN, N1)
+    B = collect(N0 .+ (1:M0))
+    S[B] .= IN
+
+    invB = Matrix{T}(I, M0, M0)
+    q = A0 * d0
+    for j in 1:M0
+        invB[j, j] = b0[j] >= q[j] ? one(T) : -one(T)
+    end
+    q = abs.(q - b0)
+    c1 = [zeros(T, N0); fill(one(T), M0)]   #灯塔的　模型　是　min
+    A1 = [A0 invB]
+    b1 = b0
+    d1 = [d0; zeros(T, M0)]
+    u1 = [u0; fill(Inf, M0)]
+
+    iH, x, invB = solveLP(c1, A1, b1, d1, u1, B, S; invB=invB, q=q, tol=tol)
+    f = sum(x[N0+1:end])
+    if abs(f) > tol
+        return x[1:N], S[1:N], 0   #0 infeasible
+    end
+
+    #Phase II    --- --- phase 2 --- ---
+    if Phase1
+        x = x[1:N]
+    else
+        q = x[B]
+        c0 = [c; zeros(T, n)]
+        c0[id] .= -c0[id]
+        c0[N+1:end] .= -c0[iv]
+
+        #Artificial Variable in Basis, driving out AV
+        ib = findall(B .<= N0)
+        m = length(ib)
+        if m < M0
+            iB = B[ib]
+            F = trues(N0)
+            F[iB] .= false
+            iF = findall(F)
+            ic = [iB; iF]
+            #ra, la = getRowsGJr(copy(A0[:, ic]'), tol)
+            ra, la = getRowsGJr(A0[:, ic]', tol)
+            B = sort(ic[ra])
+            iA = setdiff(B, iB)
+            invB = inv(lu(A0[:, B]))
+            S[iA] .= IN
+            q = x[B]
+        end
+
+        #display(time() - t1)
+
+        S = S[1:N0]
+        if !min
+            c0 = -c0
+        end
+        iH, x0, invB = solveLP(c0, A0, b0, d0, u0, B, S; invB=invB, q=q, tol=tol)
+        x = x0[1:N]
+    end
+
+    S = S[1:N]
+    #variables: restore free, or flip back
+
+    if n > 0    #free variable
+        x[iv] .-= x0[N+1:N+n]
+        S[iv] .= IN
+
+        #always infinitely many solutions when free variables
+        for k in 1:M0
+            if B[k] > N
+                B[k] = iv[B[k]-N]
+            end
+        end
+
+        F = trues(N)
+        F[B] .= false
+        invB = inv(lu(A0[:, B]))
+        Y = invB * A0[:, findall(F)]
+        c0 = c0[1:N]
+        h = c0[F] - Y' * c0[B]
+        ih = abs.(h) .< tol
+        iH = sum(ih) > 0 ? 2 : 1
+    end
+
+    m = length(id)
+    if m > 0   # flip u d
+        x[id] = -x[id]
+        for k in 1:m
+            if S[k] == DN
+                S[k] == UP
+            end
+        end
+    end
+    return x, S, iH
+
+
+end
 
 
 
