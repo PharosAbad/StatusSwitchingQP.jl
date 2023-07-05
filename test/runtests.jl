@@ -14,7 +14,8 @@ using Test
     b = zeros(0)
 
     Q = LP(c, A, b; d=d, u=u, G=G, g=g)
-    x, S, status = solveLP(Q)
+    #x, S, status = solveLP(Q)
+    status, x, invB = SimplexLP(Q)  #SSLP is not finished yet
     @test status == 3   #infinitely many solutions
 
 
