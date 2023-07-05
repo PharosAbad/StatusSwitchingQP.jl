@@ -1,6 +1,6 @@
 
 @inline function getRowsGJ(X::AbstractMatrix, tol=eps(norm(X, Inf)))
-#@inline function getRowsGJ(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}
+    #@inline function getRowsGJ(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}
     #Gauss-Jordan elimination, code form rref_with_pivots!
     A = copy(X)
     nr, nc = size(A)
@@ -87,7 +87,7 @@ end
 
 #see https://discourse.julialang.org/t/matrix-division-vs-compute-by-hand-why-such-big-difference/98288
 function getRows(A::AbstractMatrix, tol=eps(norm(X, Inf)))
-#function getRows(A::Matrix{T}, tol=sqrt(eps(T))) where {T}
+    #function getRows(A::Matrix{T}, tol=sqrt(eps(T))) where {T}
     #indicate the non-redundant rows, the begaining few rows can be zeros (redundant)
     M, N = size(A)
     if N == 0
@@ -125,3 +125,63 @@ function getRows(A::AbstractMatrix, tol=eps(norm(X, Inf)))
     return findall(R)
 end
 
+#see https://www.mathworks.com/matlabcentral/answers/574543-algorithm-to-extract-linearly-dependent-columns-in-a-matrix#answer_474601
+function getRowsQR(A, tol=2^-33)
+    #Extract linearly independent subset of matrix rows
+    ci = Vector{Int64}()
+    G = qr(A', ColumnNorm())
+    d = abs.(diag(G.R))
+    #d1 = d[1]
+    #if d1 > tol
+    #r = findlast(d .>= tol * d1)
+    if d[1] > tol
+        r = findlast(d .>= tol)
+        ci = G.p[1:r]
+    end
+    #return ci, G
+    return ci
+end
+
+
+function cAbdu(Q::LP{T}; tol=2^-26) where {T}
+    #convert Gx≤g to equalities by adding slack variables
+    #(; c, A, b, G, g, d, u, M, J) = P
+    c = Q.c
+    A = Q.A
+    b = Q.b
+    G = Q.G
+    g = Q.g
+    d = Q.d
+    u = Q.u
+    #N = Q.N
+    M = Q.M
+    J = Q.J
+
+    # #=
+    #purge redundancy in Ax=b
+    ir, L = getRowsGJr([A b], tol)
+    if length(ir) != L
+        #error("infeasible")
+        #return zeros(T, N), fill(DN, N), 0   #0 infeasible
+        return 0, c, A, b, d, u
+    end
+    if L != M
+        M = L
+        A = A[ir, :]
+        b = b[ir]
+    end
+
+    #g = g[1:2] # not change Q.g
+    #g .= G[:,1]    #will change Q.g
+    # =#
+
+    #add slack variables, convert to all equalities
+    A0 = [A zeros(T, M, J)
+        G Matrix{T}(I, J, J)]
+    b0 = [b; g]
+    d0 = [d; zeros(T, J)]
+    u0 = [u; fill(Inf, J)]
+    c0 = [c; zeros(T, J)]
+    return 1, c0, A0, b0, d0, u0
+
+end

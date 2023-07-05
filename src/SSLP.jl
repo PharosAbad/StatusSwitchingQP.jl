@@ -2,52 +2,11 @@
 module SSLP
 
 using LinearAlgebra
-using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, QP, getRowsGJ, getRowsGJr, Settings
+using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, QP, getRowsGJ, getRowsGJr, Settings, getRowsQR, cAbdu
 #using StatusSwitchingQP.SSQP: solveQP
 export auxLP, solveLP
 
-function cAbdu(Q::LP{T}; tol=2^-26) where {T}
-    #convert Gx≤g to equalities by adding slack variables
-    #(; c, A, b, G, g, d, u, M, J) = P
-    c = Q.c
-    A = Q.A
-    b = Q.b
-    G = Q.G
-    g = Q.g
-    d = Q.d
-    u = Q.u
-    #N = Q.N
-    M = Q.M
-    J = Q.J
 
-    # #=
-    #purge redundancy in Ax=b
-    ir, L = getRowsGJr([A b], tol)
-    if length(ir) != L
-        #error("infeasible")
-        #return zeros(T, N), fill(DN, N), 0   #0 infeasible
-        return 0, c, A, b, d, u
-    end
-    if L != M
-        M = L
-        A = A[ir, :]
-        b = b[ir]
-    end
-
-    #g = g[1:2] # not change Q.g
-    #g .= G[:,1]    #will change Q.g
-    # =#
-
-    #add slack variables, convert to all equalities
-    A0 = [A zeros(T, M, J)
-        G Matrix{T}(I, J, J)]
-    b0 = [b; g]
-    d0 = [d; zeros(T, J)]
-    u0 = [u; fill(Inf, J)]
-    c0 = [c; zeros(T, J)]
-    return 1, c0, A0, b0, d0, u0
-
-end
 
 
 @inline function freeK!(S, c, A, tol)  #for K=0
@@ -170,11 +129,15 @@ end
 
         if length(ih) > 0
             #S[ib[ih[1]]] = IN  #cause singular matrix in later steps
+            # #=
             k = argmin(h[ih])
             S[ib[ih[k]]] = IN
+            # =#
+            # S[ib[ih]] .= IN
         else
             if any(abs.(h) .< tol)  #when all IN, no hB
-                return 2
+                #display((nb, length(h), h))
+                return 2        #maybe false alarm, we may have h=0 for degenerate iterms. correct only if F is the basic
             end
             return 1    #hit optimal
         end
@@ -203,7 +166,7 @@ Outputs
     S               : Vector{Status}, (N+J)x1
     status          : 1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded; -1 numerical errors; -maxIter, not done
 
-solveLP(c, A, d, u, S, x0; settings):  given initial `S` and `x0`, for
+solveLP(c, A, d, u, S, x0; settings):  given initial `S` and `x0` and updated in place (only return `status`), for
 
 ```math
 min   f=c′x
@@ -253,19 +216,46 @@ function solveLP(c::Vector{T}, A, d, u, S, x; settings=Settings{T}()) where {T}
         end
 
         B = .!F
+
+        # #=
+        AE = A[:, F]
+        AB = A[:, B]
+        cF = c[F]
+        #=
+        r01 = rank(AE)
+        r02 = rank([AE' cF])
+        display((iter, K, r01, r02-r01))
+        =#
+        #ra, W = getRowsQR(AE, tolG)
+        ra = getRowsQR(AE, tolG)
+        if length(ra) < M
+            #if rank(AE) < M
+            #    ra, la = getRowsGJr(AE, tol)
+            #if la < M
+            AE = AE[ra, :]
+            AB = AB[ra, :]
+            #W = qr(AE', ColumnNorm())
+        end
+        # =#
+
+        #=
         AE = @view A[:, F]
         AB = @view A[:, B]
         cF = @view c[F]
-
+        =#
         w = AE' \ cF   # When AE is square, lu is called, otherwise, qr     而且 AE 不满行秩 时 也能计算 2023-06-16 16:39:51
+        #w = W \ cF
         p = AE' * w - cF
+
+
+
 
         #direction p ≠ 0
         if norm(p, Inf) > tolG
             #if norm(p, Inf) > tolG * ( abs( log2(cond(invC))) +1)  #when M>100, compute invC is a heavy burden and not stable  2023-04-29 22:32:18
             status = aStep!(S, x, p, F, d, u, tol)
             if status >= 0
-                return status   #, x
+                return status
             else
                 continue
             end
@@ -276,8 +266,9 @@ function solveLP(c::Vector{T}, A, d, u, S, x; settings=Settings{T}()) where {T}
         if status >= 0
             if M < K
                 status = 2  #infinitely many solutions
+                #display((M, K, length(ra)))
             end
-            return status   #, x
+            return status
         end
     end
 end

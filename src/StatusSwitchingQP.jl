@@ -13,7 +13,7 @@ export Status, IN, DN, UP, OE, EO, Event
 export LP, QP, Settings
 
 include("./utils.jl")
-export getRowsGJ, getRowsGJr
+export getRowsGJ, getRowsGJr, getRowsQR, cAbdu
 
 include("./Simplex.jl")
 using .Simplex

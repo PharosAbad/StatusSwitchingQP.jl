@@ -2,12 +2,415 @@
 module Simplex
 using LinearAlgebra
 using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, Settings, getRowsGJr
-export SimplexLP, cDantzigLP, maxImprvLP
+export SimplexLP, cDantzigLP, maxImprvLP, stpEdgeLP
 
 #=
 REMARK: writing the next basis as a product of the current basis times an easily invertible matrix can be extended over several iterations. We do not adopt this for accuracy
     If this method is adopt, how often should one recompute an inverse of the current basis?
 =#
+
+
+
+"""
+        stpEdgeLP(c, A, b, d, u, B, S; invB, q, tol=2^-26)
+
+using  steepest edge pivot rule to solve LP (switch to Bland's rule if iters > N)
+
+```math
+        min   f=c′x
+        s.t.  Ax=b
+              d≤x≤u
+```
+the native model requires that `d` is finite
+B    : index set of basic variable, always sorted
+S    : Vector{Status}, Nx1
+invB : inverse of the basic matrix
+q    : x[B]
+
+Outputs             B and S in caller is changed
+    status          : 1 unique; 0 infeasible; 2 infinitely many sol; 3 unbounded
+    x               : solution,  N x 1 vector
+    invB            : inverse of the basic matrix
+
+
+"""
+function stpEdgeLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T}
+    #B is always sorted. B and S in caller is changed, compute invB and q=x[B] each step, switch Dantzig to Bland rule when iter > N
+
+    N = length(c)
+    M = length(b)
+    F = trues(N)
+    F[B] .= false
+    gt = zeros(T, M)    #step size
+    ip = zeros(Int, M)    #tracking the rows of p
+    Sb = fill(DN, M)    #State of leaving to be
+
+    ud = u - d
+    du = -ud
+    fu = u .< Inf   #finite upper bound
+
+    x = copy(d)
+    @inbounds begin
+        iu = findall(S .== UP)
+        x[iu] = u[iu]
+
+        Y = invB * A[:, F]
+        h = c[F] - Y' * c[B]
+        id = S[F] .== DN
+        h[id] .= -h[id]
+        ih = findall(h .> tol)
+        hp = h[ih]
+        iH = findall(F)[ih]
+    end
+    nH = length(iH)
+    Edge = true
+    #Edge = false
+    loop = 0
+    @inbounds while nH > 0
+        loop += 1
+        if loop > N
+            Edge = false    #switch to Bland rule
+        end
+        #display((Edge, B))
+        if Edge             #steepest edge
+            #=
+            se = zeros(T, nH)
+            for n in eachindex(hp)
+                y = Y[:, ih[n]]
+                #se[n] = hp[n]^2 / (1 + y' * y)
+                se[n] = hp[n]^2 / (1 + sum(y .^ 2))
+            end
+            =#
+
+            # #=
+            #Yh = Y[:, ih] .^2
+            #y = sum(Yh, dims=1)
+            #y = vec(sum(Y[:, ih] .^ 2, dims=1))
+            y = vec(sum(Y[:, ih] .^ 2, dims=1)) .+ 1
+            #se = hp .^2
+            #se ./= (1 .+ vec(y))
+            #se = hp .^ 2 ./ (1 .+ y)
+            se = hp .^ 2 ./ y
+            # =#
+
+            k0 = argmax(se)
+        else
+            k0 = 1
+            #k0 = argmax(hp)
+        end
+        k = iH[k0]
+
+        #display((Edge, B, hp, se, k, iH[argmax(hp)]))
+        #display((Edge, B, hp, k, iH[argmax(hp)]))
+
+        p = invB * A[:, k]
+        kd = S[k] == DN
+        m = 0
+        if kd
+            for j in 1:M
+                i = B[j]
+                if p[j] > tol
+                    m += 1
+                    gt[m] = (q[j] - d[i]) / p[j]
+                    ip[m] = j
+                    Sb[m] = DN
+                elseif p[j] < -tol #&& fu[i]
+                    m += 1
+                    gt[m] = (q[j] - u[i]) / p[j]
+                    ip[m] = j
+                    Sb[m] = UP
+                end
+            end
+
+            if m == 0   # p=0 => A[:,k]=0
+                if fu[k]    #DN -> UP
+                    l = -1
+                else    # unbounded
+                    x[B] = q
+                    return 3, x, invB
+                end
+            else
+                (gl, l) = findmin(gt[1:m])  #gl>0
+                if fu[k]
+                    if gl >= ud[k]   #DN -> UP
+                        l = -1
+                    else
+                        Sl = Sb[l]
+                        l = ip[l]
+                    end
+                else
+                    if isinf(gl) #unbounded
+                        x[B] = q
+                        return 3, x, invB
+                    end
+                    Sl = Sb[l]
+                    l = ip[l]
+                end
+            end
+
+        else    #UP
+            for j in 1:M
+                i = B[j]
+                if p[j] > tol #&& fu[i]
+                    m += 1
+                    gt[m] = (q[j] - u[i]) / p[j]
+                    ip[m] = j
+                    Sb[m] = UP
+                elseif p[j] < -tol
+                    m += 1
+                    gt[m] = (q[j] - d[i]) / p[j]
+                    ip[m] = j
+                    Sb[m] = DN
+                end
+            end
+
+            if m == 0   # p=0 => A[:,k]=0
+                l = -2  #UP -> DN
+            else
+                (gl, l) = findmax(gt[1:m])  #gl<0
+                if gl <= du[k]  #du[k] is finite, for S[k]==UP and d is finite
+                    l = -2  #UP -> DN
+                else
+                    Sl = Sb[l]
+                    l = ip[l]
+                end
+            end
+        end
+
+
+        if l == -1  #flip the state
+            S[k] = UP
+            x[k] = u[k]
+            #q -= g0 * p
+        elseif l == -2  #flip the state
+            S[k] = DN
+            x[k] = d[k]
+            #q -= g0 * p
+        elseif l > 0
+            m = l
+            l = B[l]       #leaving index
+            F[k] = false
+            F[l] = true
+            B[m] = k
+
+            #B = sort(B)
+            sort!(B)
+            #invB = inv(A[:, B])
+            invB = inv(lu(A[:, B]))
+
+            S[k] = IN
+            S[l] = Sl
+            x[l] = Sl == DN ? d[l] : u[l]
+            Y = invB * A[:, F]
+            #q = invB * b - Y * x[F]
+        end
+
+        q = invB * b - Y * x[F]
+        h = c[F] - Y' * c[B]
+        id = S[F] .== DN
+        h[id] .= -h[id]
+        #ih = h .> tol
+        ih = findall(h .> tol)
+        hp = h[ih]
+        iH = findall(F)[ih]
+        nH = length(iH)
+    end
+
+    x[B] = q
+    ms = any(abs.(h) .< tol)
+    status = ms ? 2 : 1
+    #display((status, length(h), h))
+    return status, x, invB
+end
+
+#=
+#much slow
+# (switch to Bland's rule if zero progress temporarily)
+function stpEdgeLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T}
+    #B is always sorted. B and S in caller is changed, compute invB and q=x[B] each step, switch Dantzig to Bland rule when iter > N
+    #=
+    not able to prove that steepest edge is anti-cycling. But all cycling example are unbounded, that is not real cycling, as unbounded is detected always.
+    Hence, all possible cycling are at the same point (step size is zero)
+    =#
+
+
+    N = length(c)
+    M = length(b)
+    F = trues(N)
+    F[B] .= false
+    gt = zeros(T, M)    #step size
+    ip = zeros(Int, M)    #tracking the rows of p
+    Sb = fill(DN, M)    #State of leaving to be
+
+    ud = u - d
+    du = -ud
+    fu = u .< Inf   #finite upper bound
+
+    x = copy(d)
+    @inbounds begin
+        iu = findall(S .== UP)
+        x[iu] = u[iu]
+
+        Y = invB * A[:, F]
+        h = c[F] - Y' * c[B]
+        id = S[F] .== DN
+        h[id] .= -h[id]
+        ih = findall(h .> tol)
+        hp = h[ih]
+        iH = findall(F)[ih]
+    end
+    nH = length(iH)
+    Edge = true
+    #Edge = false
+    #loop = 0
+    gl = zero(T)
+    @inbounds while nH > 0
+        #=
+        loop += 1
+        if loop > N
+            Edge = false    #switch to Bland rule
+        end
+        =#
+        if Edge             #steepest edge
+            y = vec(sum(Y[:, ih] .^ 2, dims=1)) .+ 1
+            se = hp .^ 2 ./ y
+            k0 = argmax(se)
+        else
+            k0 = 1
+            #k0 = argmax(hp)
+        end
+        k = iH[k0]
+
+        #display((Edge, B, hp, se, k, iH[argmax(hp)]))
+        #display((Edge, B, hp, k, iH[argmax(hp)]))
+
+        p = invB * A[:, k]
+        kd = S[k] == DN
+        m = 0
+        if kd
+            for j in 1:M
+                i = B[j]
+                if p[j] > tol
+                    m += 1
+                    gt[m] = (q[j] - d[i]) / p[j]
+                    ip[m] = j
+                    Sb[m] = DN
+                elseif p[j] < -tol #&& fu[i]
+                    m += 1
+                    gt[m] = (q[j] - u[i]) / p[j]
+                    ip[m] = j
+                    Sb[m] = UP
+                end
+            end
+
+            if m == 0   # p=0 => A[:,k]=0
+                if fu[k]    #DN -> UP
+                    l = -1
+                else    # unbounded
+                    x[B] = q
+                    return 3, x, invB
+                end
+            else
+                (gl, l) = findmin(gt[1:m])  #gl>0
+                if fu[k]
+                    if gl >= ud[k]   #DN -> UP
+                        l = -1
+                    else
+                        Sl = Sb[l]
+                        l = ip[l]
+                    end
+                else
+                    if isinf(gl) #unbounded
+                        x[B] = q
+                        return 3, x, invB
+                    end
+                    Sl = Sb[l]
+                    l = ip[l]
+                end
+            end
+
+        else    #UP
+            for j in 1:M
+                i = B[j]
+                if p[j] > tol #&& fu[i]
+                    m += 1
+                    gt[m] = (q[j] - u[i]) / p[j]
+                    ip[m] = j
+                    Sb[m] = UP
+                elseif p[j] < -tol
+                    m += 1
+                    gt[m] = (q[j] - d[i]) / p[j]
+                    ip[m] = j
+                    Sb[m] = DN
+                end
+            end
+
+            if m == 0   # p=0 => A[:,k]=0
+                l = -2  #UP -> DN
+            else
+                (gl, l) = findmax(gt[1:m])  #gl<0
+                if gl <= du[k]  #du[k] is finite, for S[k]==UP and d is finite
+                    l = -2  #UP -> DN
+                else
+                    Sl = Sb[l]
+                    l = ip[l]
+                end
+            end
+        end
+
+
+        if l == -1  #flip the state
+            S[k] = UP
+            x[k] = u[k]
+            #q -= g0 * p
+        elseif l == -2  #flip the state
+            S[k] = DN
+            x[k] = d[k]
+            #q -= g0 * p
+        elseif l > 0
+
+            if Edge && abs(gl) < tol    #temporarily switch to Bland rule if zero stepsize
+                Edge = false
+                continue
+            end
+            Edge = true
+
+            m = l
+            l = B[l]       #leaving index
+            F[k] = false
+            F[l] = true
+            B[m] = k
+
+            #B = sort(B)
+            sort!(B)
+            #invB = inv(A[:, B])
+            invB = inv(lu(A[:, B]))
+
+            S[k] = IN
+            S[l] = Sl
+            x[l] = Sl == DN ? d[l] : u[l]
+            Y = invB * A[:, F]
+            #q = invB * b - Y * x[F]
+        end
+
+        q = invB * b - Y * x[F]
+        h = c[F] - Y' * c[B]
+        id = S[F] .== DN
+        h[id] .= -h[id]
+        #ih = h .> tol
+        ih = findall(h .> tol)
+        hp = h[ih]
+        iH = findall(F)[ih]
+        nH = length(iH)
+    end
+
+    x[B] = q
+    ms = any(abs.(h) .< tol)
+    status = ms ? 2 : 1
+    return status, x, invB
+end
+=#
+
 
 
 
@@ -80,6 +483,7 @@ function cDantzigLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
         if loop > N
             Bland = true    #Dantzig rule switch to Bland rule
         end
+        #display((Bland, B))
 
         #Dantzig rule or Bland rule
         #k0 = Bland ? 1 : argmax(hp)
@@ -160,11 +564,11 @@ function cDantzigLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
         end
 
 
-        if l == -1  #flip the sate
+        if l == -1  #flip the state
             S[k] = UP
             x[k] = u[k]
             #q -= g0 * p
-        elseif l == -2  #flip the sate
+        elseif l == -2  #flip the state
             S[k] = DN
             x[k] = d[k]
             #q -= g0 * p
@@ -197,13 +601,11 @@ function cDantzigLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
         nH = length(iH)
     end
 
-    #@. ih = abs(h) < tol   # h==0
-    ih = abs.(h) .< tol   # h==0
+
     x[B] = q
 
-    #status = length(ih) > 0 ? 2 : 1
-    status = sum(ih) > 0 ? 2 : 1
-    #status = any( S[F][ih] .!= DN) ? 2 : 1
+    ms = any(abs.(h) .< tol)
+    status = ms ? 2 : 1
     return status, x, invB
 end
 
@@ -360,11 +762,11 @@ function maxImprvLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
         #gl = g[k]
         Sl = vS[k]
         k = iH[k]   #entering index
-        if l == -1  #flip the sate
+        if l == -1  #flip the state
             S[k] = UP
             x[k] = u[k]
             #q -= gl * p
-        elseif l == -2  #flip the sate
+        elseif l == -2  #flip the state
             S[k] = DN
             x[k] = d[k]
             #q -= gl * p
@@ -396,12 +798,11 @@ function maxImprvLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T
         nH = length(iH)
     end
 
-    ih = abs.(h) .< tol   # h==0
+
     x[B] = q
 
-    #status = length(ih) > 0 ? 2 : 1
-    status = sum(ih) > 0 ? 2 : 1
-    #status = any( S[F][ih] .!= DN) ? 2 : 1
+    ms = any(abs.(h) .< tol)
+    status = ms ? 2 : 1
     return status, x, invB
 
 end
@@ -448,6 +849,8 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true, Phase1=false) whe
     solveLP = cDantzigLP
     if rule == :maxImprovement
         solveLP = maxImprvLP
+    elseif rule == :stpEdgeLP
+        solveLP = stpEdgeLP
     end
 
     #convert free variable: -∞ < x < +∞
@@ -625,6 +1028,8 @@ function SimplexLP(c::Vector{T}, A, b, d, u; settings=Settings{T}(), min=true, P
     solveLP = cDantzigLP
     if rule == :maxImprovement
         solveLP = maxImprvLP
+    elseif rule == :stpEdgeLP
+        solveLP = stpEdgeLP
     end
 
     #convert free variable: -∞ < x < +∞

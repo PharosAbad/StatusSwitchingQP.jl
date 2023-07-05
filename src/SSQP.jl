@@ -4,7 +4,7 @@ module SSQP
 using LinearAlgebra
 using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, QP, getRowsGJ, getRowsGJr, Settings
 export solveQP
-using StatusSwitchingQP.Simplex: cDantzigLP, maxImprvLP #, Simplex
+using StatusSwitchingQP.Simplex: cDantzigLP, maxImprvLP, stpEdgeLP #, Simplex
 
 
 @inline function polishSz!(S, z, d, u, G, g, N, J, tol)
@@ -376,43 +376,6 @@ function solveQP(Q::QP{T}, S, x0; settings=Settings{T}()) where {T}
     end
 end
 
-#=
-function alphaCal(F, z, Se, V, A, G, q, b, g, tol)
-    B = .!F
-    Eg = (Se .== EO)
-    GE = @view G[Eg, :]
-    AE = vcat(A[:, F], GE[:, F])
-
-    zB = z[B]
-    AB = vcat(A[:, B], GE[:, B])
-    bE = vcat(b, g[Eg]) - AB * zB
-
-    ra = getRows(AE, tol)
-    W = length(ra)
-    if W < length(bE)
-        rb = getRows([AE bE], tol)
-        if W != length(rb)
-            return z, S, 0    #infeasible
-        end
-        AE = AE[ra, :]
-        bE = bE[ra]
-        AB = AB[ra, :]
-    end
-
-    iV = inv(cholesky(V[F, F]))
-    VBF = V[B, F]
-    c = VBF' * zB + q[F]
-    mT = iV * AE'   #T=V_{I}⁻¹A_{I}′
-    C = AE * mT
-    C = (C + C') / 2
-    C = inv(cholesky(C))
-    TC = mT * C
-    VQ = iV - mT * TC'    #Q=I-A_{I}′CT′   V_{I}⁻¹Q=V_{I}⁻¹-TCT′
-    alpha = TC * bE - VQ * c    #α=TCb_{E}-V_{I}⁻¹Qc
-    #p = alpha - z[F]
-    return alpha
-end
-=#
 
 
 """
@@ -439,6 +402,8 @@ function initSSQP(Q::QP{T}, settingsLP) where {T}
     solveLP = cDantzigLP
     if rule == :maxImprovement
         solveLP = maxImprvLP
+    elseif rule == :stpEdgeLP
+        solveLP = stpEdgeLP
     end
 
     #An initial feasible point by performing Phase-I Simplex on the polyhedron
@@ -512,6 +477,8 @@ function initQP(Q::QP{T}, settingsLP) where {T}
     solveLP = cDantzigLP
     if rule == :maxImprovement
         solveLP = maxImprvLP
+    elseif rule == :stpEdgeLP
+        solveLP = stpEdgeLP
     end
 
     #convert free variable: -∞ < x < +∞

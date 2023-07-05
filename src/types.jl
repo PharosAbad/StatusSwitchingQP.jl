@@ -355,6 +355,24 @@ function QP(P::LP{T}) where {T}
     return QP(diagm(v), A, G, zeros(T, length(c)), b, g, d, u, N, M, J, P.mc)
 end
 
+function LP(P::QP{T}; c = P.q) where {T}
+
+    #(; q, A, b, G, g, d, u, N, M, J, mc) = P
+    #q = P.q
+    A = P.A
+    b = P.b
+    G = P.G
+    g = P.g
+    d = P.d
+    u = P.u
+    N = P.N
+    M = P.M
+    J = P.J
+    #return LP(q, A, b, G, g, d, u, N, M, J, 1)
+    return LP(c, A, b, G, g, d, u, N, M, J, 1)
+end
+
+
 """
 
         Settings(; kwargs...)       The default Settings is set by Float64 type
@@ -366,7 +384,7 @@ kwargs are from the fields of Settings{T<:AbstractFloat} for Float64 and BigFloa
             tol::T          #2^-26 ≈ 1.5e-8  general scalar
             tolG::T         #2^-33 ≈ 1.2e-10 for Greeks (beta and gamma)
             pivot::Symbol   #pivot for purging redundant rows (Gauss-Jordan elimination) {:column, :row}
-            rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
+            rule::Symbol    #rule for Simplex {:Dantzig, :stpEdgeLP, :maxImprovement}
 
 """
 struct Settings{T<:AbstractFloat}
@@ -375,7 +393,7 @@ struct Settings{T<:AbstractFloat}
     #tolN::T         #2^-26
     tolG::T         #2^-33 for Greeks (beta and gamma)
     pivot::Symbol    #pivoting for purging redundant rows {:column, :row}
-    rule::Symbol    #rule for Simplex {:Dantzig, :maxImprovement}
+    rule::Symbol    #rule for Simplex {:Dantzig, :stpEdgeLP, :maxImprovement}
 end
 
 Settings(; kwargs...) = Settings{Float64}(; kwargs...)
