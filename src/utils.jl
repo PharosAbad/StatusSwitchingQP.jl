@@ -1,5 +1,5 @@
 
-@inline function getRowsGJ(X::AbstractMatrix, tol=eps(norm(X, Inf)))
+@inline function getRowsGJ(X::AbstractMatrix{T}, tol=eps(norm(X, Inf))) where {T}
     #@inline function getRowsGJ(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}
     #Gauss-Jordan elimination, code form rref_with_pivots!
     A = copy(X)
@@ -46,7 +46,7 @@ end
 
 #@inline function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row poviting
 #function getRowsGJr(X::Matrix{T}, tol=eps(norm(X, Inf))) where {T}      # row poviting
-function getRowsGJr(X::AbstractMatrix, tol=eps(norm(X, Inf)))      # row poviting
+function getRowsGJr(X::AbstractMatrix{T}, tol=2^-33) where {T}     # row poviting
     #Gauss-Jordan elimination, code form rref_with_pivots!
     A = copy(X)
     nr, nc = size(A)
@@ -86,7 +86,7 @@ function getRowsGJr(X::AbstractMatrix, tol=eps(norm(X, Inf)))      # row povitin
 end
 
 #see https://discourse.julialang.org/t/matrix-division-vs-compute-by-hand-why-such-big-difference/98288
-function getRows(A::AbstractMatrix, tol=eps(norm(X, Inf)))
+function getRows(A::AbstractMatrix{T}, tol=eps(norm(X, Inf))) where {T}
     #function getRows(A::Matrix{T}, tol=sqrt(eps(T))) where {T}
     #indicate the non-redundant rows, the begaining few rows can be zeros (redundant)
     M, N = size(A)
@@ -126,7 +126,7 @@ function getRows(A::AbstractMatrix, tol=eps(norm(X, Inf)))
 end
 
 #see https://www.mathworks.com/matlabcentral/answers/574543-algorithm-to-extract-linearly-dependent-columns-in-a-matrix#answer_474601
-function getRowsQR(A, tol=2^-33)
+function getRowsQR(A::AbstractMatrix{T}, tol=2^-33) where {T}
     #Extract linearly independent subset of matrix rows
     ci = Vector{Int64}()
     G = qr(A', ColumnNorm())
@@ -139,6 +139,18 @@ function getRowsQR(A, tol=2^-33)
         ci = G.p[1:r]
     end
     #return ci, G
+    return ci
+end
+
+function getColumnsQR(A::AbstractMatrix{T}, tol=2^-33) where {T}
+    #Extract linearly independent subset of matrix columns
+    ci = Vector{Int64}()
+    G = qr(A, ColumnNorm())
+    d = abs.(diag(G.R))
+    if d[1] > tol
+        r = findlast(d .>= tol)
+        ci = G.p[1:r]
+    end
     return ci
 end
 
@@ -184,4 +196,134 @@ function cAbdu(Q::LP{T}; tol=2^-26) where {T}
     c0 = [c; zeros(T, J)]
     return 1, c0, A0, b0, d0, u0
 
+end
+
+
+function cAb(Q::LP{T}; tol=2^-26) where {T}
+    #convert Gx≤g to equalities by adding slack variables
+    #convert free variables, convert (-∞, u]
+    #(; c, A, b, G, g, d, u, M, J) = P
+    c = Q.c
+    A = Q.A
+    b = Q.b
+    G = Q.G
+    g = Q.g
+    d = Q.d
+    u = Q.u
+    N = Q.N
+    M = Q.M
+    J = Q.J
+
+
+    #purge redundancy in Ax=b
+    ir, L = getRowsGJr([A b], tol)
+    if length(ir) != L
+        return 0, c, A, b, d, c, A, Int64[], Int64[], Int64[]
+    end
+    if L != M
+        M = L
+        A = A[ir, :]
+        b = b[ir]
+    end
+
+    #free variable: -∞ < x < +∞
+    fu = (u .== Inf)   #no upper bound
+    fd = (d .== -Inf)   #no lower bound
+    fv = (fu .& fd)  #free variable
+    iv = findall(fv)
+    n = length(iv)
+    fb = .!fu   #finite upper bound
+    id = findall(fd .& fb)  # (-∞, u]  #ver 1.6
+    m = length(id)
+    ib = findall(.!fd .& fb)    # finite d and u
+    L = length(ib)
+
+
+    #add slack variables for Gz<=g
+    c0 = [c; zeros(T, J)]
+    A0 = [A zeros(T, M, J)
+        G Matrix{T}(I, J, J)]
+    b0 = [b; g]
+    d0 = [d; zeros(T, J)]
+    #u0 = [u; fill(Inf, J)]
+
+    #flip   (-∞, u]  -> [-u, +∞)
+    if m > 0
+        c0[id] .= -c0[id]
+        A0[:, id] .= -A0[:, id]
+        d0[id] .= -u[id]
+        #u0[id] .= Inf
+    end
+
+    #free variable
+    d0[iv] .= 0     #the 1st part of free variable
+    #make sure d is finite       d0 is finite now
+
+    #2nd part of free variables
+    c1 = [c0; -c0[iv]]
+    A1 = [A0 -A0[:, iv]]
+    N1 = N + J + n
+
+
+    #d1 = [d0; zeros(T, n)]
+    #u1 = [u0; fill(Inf, n)]
+
+    #x<=u to equalities
+    Au = [A1 zeros(T, M + J, L)
+        Matrix{T}(I, N1, N1)[ib, :] Matrix{T}(I, L, L)]
+    bu = [b0 - A0 * d0; u[ib] - d[ib]]
+    cu = [c1; zeros(T, L)]
+
+    return 1, cu, Au, bu, d0, c0, A0, iv, id, ib    #last three: free, up-down, up-box
+
+end
+
+#simple bound only
+function boxLP(Q::LP{T}; settings=Settings{T}()) where {T}
+    #(; c, d, u, N, M, J) = Q
+    c = Q.c
+    d = Q.d
+    u = Q.u
+    N = Q.N
+    M = Q.M
+    J = Q.J
+    tol = settings.tol
+
+    M + J == 0 || error("Not a box LP (only simple bound)")
+
+    return boxLP(c, d, u, N; tol=tol)
+end
+
+function boxLP(c, d, u, N; tol=2^-26)
+    #fu = u .< Inf   #finite upper bound
+    #fd = d .> -Inf   #finite lower bound
+    fu = u .== Inf   #no upper bound
+    fd = d .== -Inf   #no lower bound
+    status = -1  # 1: unique; 0 infeasible; 2 infinitely many sol; 3 unbounded; -1 computing
+    x = copy(d)
+    S = fill(DN, N)
+
+    for k in 1:N
+        if abs(c[k]) <= tol  #c[k] = 0
+            status = 2
+            #break
+            continue    #to find a solution
+        end
+
+        if c[k] > tol   # c > 0
+            if fd[k]
+                status = 3
+                break
+            end
+        else    # c < 0
+            x[k] = u[k]
+            if fu[k]
+                status = 3
+                break
+            end
+            S[k] = UP
+        end
+    end
+    #f = c' * x
+    return x, S, status
 end

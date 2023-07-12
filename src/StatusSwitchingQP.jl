@@ -23,8 +23,14 @@ include("./SSQP.jl")
 using .SSQP
 export solveQP
 
+#=
 include("./SSLP.jl")
 using .SSLP
+export solveLP
+=#
+
+include("./CCLP.jl")
+using .CCLP
 export solveLP
 
 include("./MOIwrapper.jl")

@@ -1,5 +1,9 @@
 "Status Switching Method for LP"
 module SSLP
+#=
+想找到最快的下降方向，如果可动的分量小于M, 变成离开基, 不退化时似乎效果不错，退化时可能前进不了。
+dual 方法， Criss-Cross 等, 不离开基, 顶点到顶点
+=#
 
 using LinearAlgebra
 using StatusSwitchingQP: Status, IN, DN, UP, OE, EO, Event, LP, QP, getRowsGJ, getRowsGJr, Settings, getRowsQR, cAbdu
@@ -727,7 +731,7 @@ function initLP(Q::LP{T}, settings) where {T}
         for k in 1:m
             #S[k] = S[k] == DN ? UP : DN
             if S[k] == DN
-                S[k] == UP
+                S[k] = UP
             end
         end
     end

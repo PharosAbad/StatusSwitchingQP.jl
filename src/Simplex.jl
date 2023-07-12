@@ -73,29 +73,33 @@ function stpEdgeLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T}
         end
         #display((Edge, B))
         if Edge             #steepest edge
-            #=
-            se = zeros(T, nH)
-            for n in eachindex(hp)
-                y = Y[:, ih[n]]
-                #se[n] = hp[n]^2 / (1 + y' * y)
-                se[n] = hp[n]^2 / (1 + sum(y .^ 2))
+            if nH == 1  #only ONE choice
+                k0 = 1
+            else
+                #=
+                se = zeros(T, nH)
+                for n in eachindex(hp)
+                    y = Y[:, ih[n]]
+                    #se[n] = hp[n]^2 / (1 + y' * y)
+                    se[n] = hp[n]^2 / (1 + sum(y .^ 2))
+                end
+                =#
+
+                # #=
+                #Yh = Y[:, ih] .^2
+                #y = sum(Yh, dims=1)
+                #y = vec(sum(Y[:, ih] .^ 2, dims=1))
+                y = vec(sum(Y[:, ih] .^ 2, dims=1)) .+ 1
+                #se = hp .^2
+                #se ./= (1 .+ vec(y))
+                #se = hp .^ 2 ./ (1 .+ y)
+                se = hp .^ 2 ./ y
+                # =#
+
+                k0 = argmax(se)
             end
-            =#
-
-            # #=
-            #Yh = Y[:, ih] .^2
-            #y = sum(Yh, dims=1)
-            #y = vec(sum(Y[:, ih] .^ 2, dims=1))
-            y = vec(sum(Y[:, ih] .^ 2, dims=1)) .+ 1
-            #se = hp .^2
-            #se ./= (1 .+ vec(y))
-            #se = hp .^ 2 ./ (1 .+ y)
-            se = hp .^ 2 ./ y
-            # =#
-
-            k0 = argmax(se)
         else
-            k0 = 1
+            k0 = 1  #Bland rule
             #k0 = argmax(hp)
         end
         k = iH[k0]
@@ -103,7 +107,8 @@ function stpEdgeLP(c::Vector{T}, A, b, d, u, B, S; invB, q, tol=2^-26) where {T}
         #display((Edge, B, hp, se, k, iH[argmax(hp)]))
         #display((Edge, B, hp, k, iH[argmax(hp)]))
 
-        p = invB * A[:, k]
+        #p = invB * A[:, k]
+        p = Y[:, ih[k0]]    #https://discourse.julialang.org/t/101200/3
         kd = S[k] == DN
         m = 0
         if kd
@@ -989,12 +994,19 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true, Phase1=false) whe
 
     if n > 0    #free variable
         x[iv] .-= x0[nj+1:nj+n]
-        S[iv] .= IN
+        #S[iv] .= IN
 
         #always infinitely many solutions when free variables
         for k in 1:M0
+            #=
             if B[k] > nj
                 B[k] = iv[B[k]-nj]
+            end
+            =#
+            t = B[k]
+            if t > nj   #move IN to part 1
+                B[k] = iv[t-nj]
+                S[B[k]] = IN
             end
         end
 
@@ -1012,8 +1024,9 @@ function SimplexLP(P::LP{T}; settings=Settings{T}(), min=true, Phase1=false) whe
     if m > 0   # flip u d
         x[id] = -x[id]
         for k in 1:m
-            if S[k] == DN
-                S[k] == UP
+            i = id[k]
+            if S[i] == DN
+                S[i] = UP
             end
         end
     end
@@ -1139,14 +1152,23 @@ function SimplexLP(c::Vector{T}, A, b, d, u; settings=Settings{T}(), min=true, P
 
     if n > 0    #free variable
         x[iv] .-= x0[N+1:N+n]
-        S[iv] .= IN
+        #S[iv] .= IN
 
         #always infinitely many solutions when free variables
         for k in 1:M0
+            #=
             if B[k] > N
                 B[k] = iv[B[k]-N]
             end
+            =#
+            t = B[k]
+            if t > N   #move IN to part 1
+                B[k] = iv[t-N]
+                S[B[k]] = IN
+            end
         end
+
+
 
         F = trues(N)
         F[B] .= false
@@ -1162,8 +1184,9 @@ function SimplexLP(c::Vector{T}, A, b, d, u; settings=Settings{T}(), min=true, P
     if m > 0   # flip u d
         x[id] = -x[id]
         for k in 1:m
-            if S[k] == DN
-                S[k] == UP
+            i = id[k]
+            if S[i] == DN
+                S[i] = UP
             end
         end
     end
